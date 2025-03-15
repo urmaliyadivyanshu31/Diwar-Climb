@@ -8,6 +8,7 @@
 // Player state
 let playerBody = null;
 let canJump = false;
+let hasDoubleJump = false; // For double jump feature
 let score = 0;
 let health = 100;
 let highestY = 0;
@@ -16,7 +17,8 @@ let movementState = {
     moving: false,
     running: false,
     jumping: false,
-    falling: false
+    falling: false,
+    doubleJumping: false
 };
 
 // Scoring system
@@ -33,12 +35,16 @@ const PLAYER_RADIUS = 0.3;
 const PLAYER_MASS = 5;
 const PLAYER_MOVE_SPEED = 5;
 const PLAYER_RUN_SPEED = 10;
-const PLAYER_JUMP_FORCE = 10;
+const PLAYER_JUMP_FORCE = 12; // Increased jump force
+const PLAYER_DOUBLE_JUMP_FORCE = 10; // Slightly weaker double jump
 const FALL_THRESHOLD = -2;
+const JUMP_COOLDOWN = 200; // Milliseconds before allowing another jump
+let lastJumpTime = 0;
 
 // Control sensitivity
 const MOVEMENT_DAMPING = 0.9; // Smooths movement
 const MAX_VELOCITY = 20; // Prevents excessive speed
+const AIR_CONTROL = 0.7; // Reduced control in air (0-1)
 
 /**
  * Initialize the player
@@ -89,22 +95,28 @@ function createPlayerPhysics() {
  * Handle player collisions
  */
 function handleCollision(event) {
-    // Check if the collision is with the ground or a tile
-    const contactNormal = new CANNON.Vec3();
-    const contact = event.contact;
-    
-    // Get the contact normal
-    if (contact.bi.id === playerBody.id) {
-        contact.ni.negate(contactNormal);
-    } else {
-        contactNormal.copy(contact.ni);
-    }
-    
-    // If the contact normal is pointing up, we're on the ground
-    if (contactNormal.y > 0.5) {
-        canJump = true;
-        movementState.jumping = false;
-        movementState.falling = false;
+    // Check if we're colliding with the ground or a tile
+    if (event.body.mass === 0) { // Static bodies have mass of 0
+        // Get collision normal (direction of impact)
+        const contactNormal = event.contact.ni;
+        
+        // If the normal is pointing up (y > 0.5), we're on top of something
+        if (contactNormal.y > 0.5) {
+            // Enable jumping
+            canJump = true;
+            hasDoubleJump = false; // Reset double jump
+            
+            // Reset jumping and falling states
+            movementState.jumping = false;
+            movementState.falling = false;
+            movementState.doubleJumping = false;
+            
+            // Check if this is a tile collision for scoring
+            if (event.body.position.y > 0) {
+                // This is likely a tile, not the ground
+                handleTileCollision(event.body);
+            }
+        }
     }
 }
 
@@ -241,6 +253,9 @@ function handleInput() {
     // Update movement state
     movementState.running = isRunning;
     
+    // Check if player is in air
+    const isInAir = !canJump;
+    
     // Apply movement force if moving
     if (moveX !== 0 || moveZ !== 0) {
         // Normalize for diagonal movement
@@ -248,9 +263,19 @@ function handleInput() {
         moveX /= length;
         moveZ /= length;
         
-        // Store movement direction for character rotation
-        movementDirection.x = moveX;
-        movementDirection.z = moveZ;
+        // Get camera orbit angle if available
+        let cameraAngle = 0;
+        if (window.gameScene && window.gameScene.getCameraOrbitAngle) {
+            cameraAngle = window.gameScene.getCameraOrbitAngle();
+        }
+        
+        // Rotate movement direction based on camera angle
+        const rotatedMoveX = moveX * Math.cos(cameraAngle) + moveZ * Math.sin(cameraAngle);
+        const rotatedMoveZ = -moveX * Math.sin(cameraAngle) + moveZ * Math.cos(cameraAngle);
+        
+        // Store rotated movement direction for character rotation
+        movementDirection.x = rotatedMoveX;
+        movementDirection.z = rotatedMoveZ;
         
         // Calculate force based on current velocity to prevent excessive acceleration
         const currentVelocity = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
@@ -266,7 +291,7 @@ function handleInput() {
             
             // If we're changing direction, apply more force
             const velocityDirection = currentVelocity.normalize();
-            const movementVector = new CANNON.Vec3(moveX, 0, moveZ);
+            const movementVector = new CANNON.Vec3(rotatedMoveX, 0, rotatedMoveZ);
             const dotProduct = velocityDirection.dot(movementVector);
             
             // If dot product is negative, we're changing direction
@@ -275,12 +300,17 @@ function handleInput() {
             }
         }
         
+        // Apply reduced control in air
+        if (isInAir) {
+            forceMultiplier *= AIR_CONTROL;
+        }
+        
         // Apply force to move the player with the calculated multiplier
         playerBody.applyImpulse(
             new CANNON.Vec3(
-                moveX * currentSpeed * forceMultiplier, 
+                rotatedMoveX * currentSpeed * forceMultiplier, 
                 0, 
-                moveZ * currentSpeed * forceMultiplier
+                rotatedMoveZ * currentSpeed * forceMultiplier
             ),
             new CANNON.Vec3(0, 0, 0)
         );
@@ -306,31 +336,62 @@ function handleInput() {
         movementState.moving = false;
     }
     
-    // Handle jumping (space key) with improved feel
-    if (keyboard[' ']) {
+    // Handle jumping
+    const currentTime = performance.now();
+    const jumpCooldownElapsed = currentTime - lastJumpTime > JUMP_COOLDOWN;
+    
+    if ((keyboard[' '] || keyboard.Space) && jumpCooldownElapsed) {
         if (canJump) {
-            // Apply jump force with a slight forward boost in the direction of movement
-            const jumpVector = new CANNON.Vec3(
-                movementDirection.x * PLAYER_JUMP_FORCE * 0.2, 
-                PLAYER_JUMP_FORCE, 
-                movementDirection.z * PLAYER_JUMP_FORCE * 0.2
-            );
-            
-            playerBody.applyImpulse(jumpVector, new CANNON.Vec3(0, 0, 0));
+            // First jump
+            playerBody.velocity.y = PLAYER_JUMP_FORCE;
             canJump = false;
-            movementState.jumping = true;
-            movementState.falling = false;
+            hasDoubleJump = true; // Enable double jump
+            lastJumpTime = currentTime;
             
-            // Add a small cooldown to prevent jump spamming
-            setTimeout(() => {
-                // This prevents the player from jumping again immediately after landing
-                if (!canJump) {
-                    // We're still in the air, do nothing
-                } else {
-                    // We've landed, allow jumping again
-                }
-            }, 100);
+            // Update movement state
+            movementState.jumping = true;
+            movementState.doubleJumping = false;
+            
+            // Play jump sound if available
+            if (window.audio && window.audio.playSound) {
+                window.audio.playSound('jump');
+            }
+        } else if (hasDoubleJump) {
+            // Double jump
+            playerBody.velocity.y = PLAYER_DOUBLE_JUMP_FORCE;
+            hasDoubleJump = false;
+            lastJumpTime = currentTime;
+            
+            // Update movement state
+            movementState.doubleJumping = true;
+            
+            // Play double jump sound if available
+            if (window.audio && window.audio.playSound) {
+                window.audio.playSound('doubleJump');
+            }
         }
+    }
+    
+    // Update movement state based on velocity
+    updateMovementState();
+}
+
+/**
+ * Update the player's movement state based on velocity
+ */
+function updateMovementState() {
+    // Check if player is falling
+    if (playerBody.velocity.y < FALL_THRESHOLD) {
+        movementState.falling = true;
+        movementState.jumping = false;
+    } else if (playerBody.velocity.y > 0) {
+        // Still going up
+        movementState.falling = false;
+    } else if (canJump) {
+        // On ground
+        movementState.falling = false;
+        movementState.jumping = false;
+        movementState.doubleJumping = false;
     }
 }
 
@@ -374,6 +435,7 @@ function restartPlayer() {
     canJump = false;
     movementState.jumping = false;
     movementState.falling = false;
+    movementState.doubleJumping = false;
     
     // If health is zero, reset everything
     if (health <= 0) {

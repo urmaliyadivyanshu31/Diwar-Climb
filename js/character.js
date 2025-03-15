@@ -306,7 +306,9 @@ function updateCharacterAnimation(movementState) {
         let targetAnimation = 'idle';
         
         // Determine which animation to play
-        if (movementState.jumping) {
+        if (movementState.doubleJumping) {
+            targetAnimation = 'doubleJump';
+        } else if (movementState.jumping) {
             targetAnimation = 'jump';
         } else if (movementState.falling) {
             targetAnimation = 'fall';
@@ -322,7 +324,10 @@ function updateCharacterAnimation(movementState) {
         
         // If we don't have the target animation, use a fallback
         if (!characterAnimations[targetAnimation]) {
-            if (targetAnimation === 'jump' || targetAnimation === 'fall') {
+            if (targetAnimation === 'doubleJump') {
+                // If no double jump animation, use jump
+                targetAnimation = 'jump';
+            } else if (targetAnimation === 'jump' || targetAnimation === 'fall') {
                 // If no jump/fall animation, use idle
                 targetAnimation = 'idle';
             } else if (targetAnimation === 'run') {
@@ -352,8 +357,22 @@ function updateCharacterAnimation(movementState) {
             const target = characterAnimations[targetAnimation];
             
             if (current && target) {
-                current.fadeOut(ANIMATION_FADE_TIME);
-                target.reset().fadeIn(ANIMATION_FADE_TIME).play();
+                // Adjust fade time based on animation type for more natural transitions
+                let fadeTime = ANIMATION_FADE_TIME;
+                
+                // Quick transitions for jumps and falls
+                if (targetAnimation === 'jump' || targetAnimation === 'doubleJump' || targetAnimation === 'fall') {
+                    fadeTime = ANIMATION_FADE_TIME / 2;
+                }
+                
+                // Slower transitions between walk and run
+                if ((currentAnimation === 'walk' && targetAnimation === 'run') || 
+                    (currentAnimation === 'run' && targetAnimation === 'walk')) {
+                    fadeTime = ANIMATION_FADE_TIME * 1.5;
+                }
+                
+                current.fadeOut(fadeTime);
+                target.reset().fadeIn(fadeTime).play();
                 
                 console.log(`Changed animation from ${currentAnimation} to ${targetAnimation}`);
                 currentAnimation = targetAnimation;

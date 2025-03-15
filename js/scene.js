@@ -17,6 +17,19 @@ const CAMERA_DISTANCE = 12;
 const CAMERA_LERP = 0.1; // Interpolation factor for smooth camera movement
 const LOOK_AHEAD_DISTANCE = 5;
 
+// Camera orbit controls
+let cameraOrbitAngle = 0; // Horizontal orbit angle in radians
+let cameraVerticalAngle = 0; // Vertical orbit angle in radians
+let isOrbitEnabled = false; // Whether orbit mode is enabled
+const ORBIT_SPEED = 0.005; // Speed of camera orbit
+const MAX_VERTICAL_ANGLE = Math.PI / 3; // Maximum vertical angle (60 degrees)
+const MIN_VERTICAL_ANGLE = -Math.PI / 6; // Minimum vertical angle (-30 degrees)
+let mouseDown = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let touchStartX = 0;
+let touchStartY = 0;
+
 /**
  * Initialize the Three.js scene
  */
@@ -45,6 +58,9 @@ function initScene() {
     
     // Set up lighting
     setupLighting();
+    
+    // Set up mouse and touch controls for camera orbit
+    setupOrbitControls();
     
     // Handle window resize
     window.addEventListener('resize', handleResize);
@@ -162,6 +178,122 @@ function handleResize() {
 }
 
 /**
+ * Set up mouse and touch controls for camera orbit
+ */
+function setupOrbitControls() {
+    // Mouse controls
+    const canvas = renderer.domElement;
+    
+    // Mouse down event
+    canvas.addEventListener('mousedown', (event) => {
+        // Only enable orbit with right mouse button
+        if (event.button === 2) {
+            mouseDown = true;
+            lastMouseX = event.clientX;
+            lastMouseY = event.clientY;
+            isOrbitEnabled = true;
+            
+            // Prevent context menu
+            canvas.addEventListener('contextmenu', preventContextMenu);
+        }
+    });
+    
+    // Mouse move event
+    window.addEventListener('mousemove', (event) => {
+        if (mouseDown && isOrbitEnabled) {
+            const deltaX = event.clientX - lastMouseX;
+            const deltaY = event.clientY - lastMouseY;
+            
+            // Update camera angles
+            cameraOrbitAngle -= deltaX * ORBIT_SPEED;
+            cameraVerticalAngle -= deltaY * ORBIT_SPEED;
+            
+            // Clamp vertical angle
+            cameraVerticalAngle = Math.max(MIN_VERTICAL_ANGLE, Math.min(MAX_VERTICAL_ANGLE, cameraVerticalAngle));
+            
+            lastMouseX = event.clientX;
+            lastMouseY = event.clientY;
+        }
+    });
+    
+    // Mouse up event
+    window.addEventListener('mouseup', (event) => {
+        if (event.button === 2) {
+            mouseDown = false;
+            canvas.removeEventListener('contextmenu', preventContextMenu);
+        }
+    });
+    
+    // Touch controls for mobile
+    canvas.addEventListener('touchstart', (event) => {
+        // Use two-finger touch for orbit
+        if (event.touches.length === 2) {
+            isOrbitEnabled = true;
+            touchStartX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+            touchStartY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+            event.preventDefault();
+        }
+    });
+    
+    canvas.addEventListener('touchmove', (event) => {
+        if (isOrbitEnabled && event.touches.length === 2) {
+            const touchX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
+            const touchY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
+            
+            const deltaX = touchX - touchStartX;
+            const deltaY = touchY - touchStartY;
+            
+            // Update camera angles
+            cameraOrbitAngle -= deltaX * ORBIT_SPEED * 0.5;
+            cameraVerticalAngle -= deltaY * ORBIT_SPEED * 0.5;
+            
+            // Clamp vertical angle
+            cameraVerticalAngle = Math.max(MIN_VERTICAL_ANGLE, Math.min(MAX_VERTICAL_ANGLE, cameraVerticalAngle));
+            
+            touchStartX = touchX;
+            touchStartY = touchY;
+            
+            event.preventDefault();
+        }
+    });
+    
+    canvas.addEventListener('touchend', (event) => {
+        if (event.touches.length < 2) {
+            isOrbitEnabled = false;
+        }
+    });
+    
+    // Trackpad controls
+    canvas.addEventListener('wheel', (event) => {
+        // Hold Ctrl key for orbit with trackpad
+        if (event.ctrlKey || event.metaKey) {
+            // Update camera angles
+            cameraOrbitAngle -= event.deltaX * ORBIT_SPEED * 0.05;
+            cameraVerticalAngle -= event.deltaY * ORBIT_SPEED * 0.05;
+            
+            // Clamp vertical angle
+            cameraVerticalAngle = Math.max(MIN_VERTICAL_ANGLE, Math.min(MAX_VERTICAL_ANGLE, cameraVerticalAngle));
+            
+            event.preventDefault();
+        }
+    }, { passive: false });
+    
+    // Add key controls for orbit mode
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'v') {
+            // Toggle orbit mode with 'V' key
+            isOrbitEnabled = !isOrbitEnabled;
+            console.log(`Orbit mode ${isOrbitEnabled ? 'enabled' : 'disabled'}`);
+        }
+    });
+    
+    // Function to prevent context menu
+    function preventContextMenu(event) {
+        event.preventDefault();
+    }
+}
+
+/**
  * Update the camera to follow the player
  */
 function updateCamera() {
@@ -180,31 +312,43 @@ function updateCamera() {
         return;
     }
     
-    // Calculate ideal camera position
-    const idealCameraPos = {
+    // Calculate ideal camera position based on orbit angle
+    let idealCameraPos = {
         x: playerPosition.x,
         y: playerPosition.y + CAMERA_HEIGHT,
         z: playerPosition.z + CAMERA_DISTANCE
     };
     
+    // Apply orbit rotation if enabled or in orbit mode
+    if (isOrbitEnabled || Math.abs(cameraOrbitAngle) > 0.01 || Math.abs(cameraVerticalAngle) > 0.01) {
+        // Calculate camera position based on spherical coordinates
+        const horizontalDistance = CAMERA_DISTANCE * Math.cos(cameraVerticalAngle);
+        
+        idealCameraPos = {
+            x: playerPosition.x + horizontalDistance * Math.sin(cameraOrbitAngle),
+            y: playerPosition.y + CAMERA_HEIGHT + CAMERA_DISTANCE * Math.sin(cameraVerticalAngle),
+            z: playerPosition.z + horizontalDistance * Math.cos(cameraOrbitAngle)
+        };
+    } else {
+        // Get player movement direction for dynamic camera adjustments
+        let movementDirection = { x: 0, z: 0 };
+        if (window.player.getMovementDirection) {
+            movementDirection = window.player.getMovementDirection();
+        }
+        
+        // Adjust camera position based on movement direction for a more dynamic feel
+        if (Math.abs(movementDirection.x) > 0.1) {
+            // Shift camera slightly to the side when moving left/right
+            idealCameraPos.x -= movementDirection.x * 2;
+        }
+    }
+    
     // Calculate ideal look-at point
     const idealLookAt = {
         x: playerPosition.x,
         y: playerPosition.y + LOOK_AHEAD_DISTANCE / 2,
-        z: playerPosition.z - LOOK_AHEAD_DISTANCE
+        z: playerPosition.z
     };
-    
-    // Get player movement direction for dynamic camera adjustments
-    let movementDirection = { x: 0, z: 0 };
-    if (window.player.getMovementDirection) {
-        movementDirection = window.player.getMovementDirection();
-    }
-    
-    // Adjust camera position based on movement direction for a more dynamic feel
-    if (Math.abs(movementDirection.x) > 0.1) {
-        // Shift camera slightly to the side when moving left/right
-        idealCameraPos.x -= movementDirection.x * 2;
-    }
     
     // Smoothly interpolate camera position (lerp)
     cameraTarget.x = cameraTarget.x + (idealCameraPos.x - cameraTarget.x) * CAMERA_LERP;
@@ -223,13 +367,21 @@ function updateCamera() {
     camera.lookAt(cameraLookAt.x, cameraLookAt.y, cameraLookAt.z);
     
     // Add slight tilt based on player movement for dynamic feel
-    if (Math.abs(movementDirection.x) > 0.1) {
-        // Add a slight tilt in the direction of movement
-        const tiltAmount = 0.05;
-        camera.rotation.z = -movementDirection.x * tiltAmount;
-    } else {
-        // Smoothly reset tilt when not moving
-        camera.rotation.z *= 0.9;
+    if (!isOrbitEnabled && Math.abs(cameraOrbitAngle) < 0.01) {
+        // Get player movement direction
+        let movementDirection = { x: 0, z: 0 };
+        if (window.player.getMovementDirection) {
+            movementDirection = window.player.getMovementDirection();
+        }
+        
+        if (Math.abs(movementDirection.x) > 0.1) {
+            // Add a slight tilt in the direction of movement
+            const tiltAmount = 0.05;
+            camera.rotation.z = -movementDirection.x * tiltAmount;
+        } else {
+            // Smoothly reset tilt when not moving
+            camera.rotation.z *= 0.9;
+        }
     }
 }
 
@@ -414,6 +566,14 @@ function createRenderer() {
     return renderer;
 }
 
+/**
+ * Get the camera orbit angle
+ * @returns {number} Current orbit angle in radians
+ */
+function getCameraOrbitAngle() {
+    return cameraOrbitAngle;
+}
+
 // Export scene functions for use in other modules
 window.gameScene = {
     initScene,
@@ -423,5 +583,7 @@ window.gameScene = {
     updateCamera,
     updateScene,
     animate,
-    startGame
+    startGame,
+    restartGame,
+    getCameraOrbitAngle
 }; 
