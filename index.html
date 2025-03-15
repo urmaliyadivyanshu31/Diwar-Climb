@@ -105,9 +105,23 @@
         }
     </style>
     <!-- Vercel Analytics -->
-    <script type="module">
-        import { inject } from 'https://unpkg.com/@vercel/analytics@1.0.0/dist/index.js';
-        inject();
+    <script>
+        // Create a fallback for Vercel Analytics in case it fails to load
+        window.va = window.va || function() { 
+            (window.va.q = window.va.q || []).push(arguments);
+        };
+        window.va('event', 'pageview');
+        
+        // Try to load Vercel Analytics script
+        (function() {
+            var script = document.createElement('script');
+            script.src = '/_vercel/insights/script.js';
+            script.async = true;
+            script.onerror = function() {
+                console.log('Vercel Analytics script failed to load - this is expected in local development');
+            };
+            document.head.appendChild(script);
+        })();
     </script>
 </head>
 <body>
@@ -149,6 +163,23 @@
     
     <!-- Analytics Module - Must be before main.js -->
     <script src="js/analytics.js"></script>
+    
+    <!-- Effects Module -->
+    <script src="js/effects.js"></script>
+    
+    <!-- Handle Solana extension errors -->
+    <script>
+        // This script prevents errors from the Solana wallet extension
+        // by providing a fallback for MutationObserver errors
+        window.addEventListener('error', function(event) {
+            if (event.message && event.message.includes('MutationObserver') && 
+                event.filename && event.filename.includes('solana')) {
+                console.log('Prevented Solana extension error');
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+    </script>
     
     <!-- Main Entry Point - Must be last -->
     <script src="js/main.js"></script>

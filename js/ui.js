@@ -853,139 +853,105 @@ function showNotification(message, type = 'default') {
 }
 
 /**
- * Show the controls panel
+ * Create controls panel with all game controls
  */
 function showControls() {
     // Create controls panel if it doesn't exist
     if (!document.getElementById('controls-panel')) {
         const controlsPanel = document.createElement('div');
         controlsPanel.id = 'controls-panel';
-        controlsPanel.className = 'game-panel';
+        controlsPanel.className = 'game-panel controls-panel';
         controlsPanel.innerHTML = `
-            <h3>Controls</h3>
-            <div class="controls-list">
+            <h2>Game Controls</h2>
+            <div class="controls-grid">
                 <div class="control-item">
-                    <span class="key">W/↑</span>
-                    <span class="action">Move Forward</span>
+                    <div class="key">W</div>
+                    <div class="action">Move Forward</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">S/↓</span>
-                    <span class="action">Move Backward</span>
+                    <div class="key">A</div>
+                    <div class="action">Move Left</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">A/←</span>
-                    <span class="action">Move Left</span>
+                    <div class="key">S</div>
+                    <div class="action">Move Back</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">D/→</span>
-                    <span class="action">Move Right</span>
+                    <div class="key">D</div>
+                    <div class="action">Move Right</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">SHIFT</span>
-                    <span class="action">Run</span>
+                    <div class="key">SPACE</div>
+                    <div class="action">Jump / Double Jump</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">SPACE</span>
-                    <span class="action">Jump/Double Jump</span>
+                    <div class="key">SHIFT</div>
+                    <div class="action">Slide</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">V</span>
-                    <span class="action">Toggle Camera Orbit</span>
+                    <div class="key">E</div>
+                    <div class="action">Dash</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">Right Click + Drag</span>
-                    <span class="action">Rotate Camera</span>
+                    <div class="key">Q</div>
+                    <div class="action">Wall Run (near wall)</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">CTRL + Trackpad</span>
-                    <span class="action">Rotate Camera</span>
+                    <div class="key">MOUSE</div>
+                    <div class="action">Look Around</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">R</span>
-                    <span class="action">Restart Game</span>
+                    <div class="key">R</div>
+                    <div class="action">Reset Position</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">H</span>
-                    <span class="action">Toggle Controls</span>
+                    <div class="key">F</div>
+                    <div class="action">Toggle Fullscreen</div>
                 </div>
                 <div class="control-item">
-                    <span class="key">F</span>
-                    <span class="action">Toggle FPS</span>
+                    <div class="key">H</div>
+                    <div class="action">Show/Hide Controls</div>
+                </div>
+                <div class="control-item">
+                    <div class="key">ESC</div>
+                    <div class="action">Pause Game</div>
                 </div>
             </div>
+            <button id="close-controls" class="close-button">×</button>
         `;
         document.body.appendChild(controlsPanel);
         
-        // Add CSS for controls panel if not already added
-        if (!document.getElementById('controls-panel-style')) {
-            const style = document.createElement('style');
-            style.id = 'controls-panel-style';
-            style.textContent = `
-                #controls-panel {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    background: rgba(0, 0, 0, 0.8);
-                    color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    font-family: 'Arial', sans-serif;
-                    z-index: 100;
-                    max-width: 400px;
-                    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-                    backdrop-filter: blur(5px);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                }
-                
-                #controls-panel h3 {
-                    text-align: center;
-                    margin-top: 0;
-                    color: #3498db;
-                    font-size: 24px;
-                    margin-bottom: 15px;
-                    text-shadow: 0 0 5px rgba(52, 152, 219, 0.7);
-                }
-                
-                .controls-list {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 10px;
-                }
-                
-                .control-item {
-                    display: flex;
-                    align-items: center;
-                    padding: 5px 0;
-                }
-                
-                .key {
-                    background: rgba(52, 152, 219, 0.3);
-                    padding: 5px 10px;
-                    border-radius: 5px;
-                    margin-right: 15px;
-                    min-width: 100px;
-                    text-align: center;
-                    font-weight: bold;
-                    border: 1px solid rgba(52, 152, 219, 0.5);
-                    box-shadow: 0 0 5px rgba(52, 152, 219, 0.3);
-                }
-                
-                .action {
-                    flex-grow: 1;
-                }
-            `;
-            document.head.appendChild(style);
+        // Add event listener to close button
+        document.getElementById('close-controls').addEventListener('click', function() {
+            toggleControlsPanel();
+        });
+        
+        // Track analytics event
+        if (window.gameAnalytics) {
+            window.gameAnalytics.trackEvent('ui_interaction', {
+                element: 'controls_panel',
+                action: 'open'
+            });
         }
-    } else {
-        // Show existing panel
-        document.getElementById('controls-panel').style.display = 'block';
     }
     
-    // Track event if analytics is available
-    if (window.gameAnalytics) {
-        window.gameAnalytics.trackEvent('ui_interaction', { action: 'show_controls' });
-    }
+    // Show the controls panel
+    document.getElementById('controls-panel').style.display = 'block';
+}
+
+/**
+ * Show welcome notification with new features
+ */
+function showWelcomeNotification() {
+    showNotification('Welcome to Diwar Climb!', 
+        'Use WASD to move, SPACE to jump, SHIFT to slide, E to dash, and Q for wall running. ' +
+        'Press H to view all controls.', 
+        10000);
+    
+    // Show a hint about controls after a delay
+    setTimeout(() => {
+        showNotification('Pro Tip', 'Try wall running and dashing for faster movement!', 5000);
+    }, 12000);
 }
 
 // Export UI functions

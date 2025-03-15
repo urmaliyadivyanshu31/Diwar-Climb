@@ -38,6 +38,79 @@ let currentTipIndex = 0;
 let tipInterval;
 
 /**
+ * Load a script dynamically
+ * @param {string} url - URL of the script to load
+ * @param {Function} onSuccess - Callback when script loads successfully
+ * @param {Function} onError - Callback when script fails to load
+ */
+function loadScript(url, onSuccess, onError) {
+    const script = document.createElement('script');
+    script.src = url;
+    script.async = true;
+    
+    script.onload = function() {
+        console.log(`Script loaded: ${url}`);
+        if (typeof onSuccess === 'function') {
+            onSuccess();
+        }
+    };
+    
+    script.onerror = function(error) {
+        console.error(`Error loading script: ${url}`, error);
+        if (typeof onError === 'function') {
+            onError(error);
+        }
+    };
+    
+    document.head.appendChild(script);
+}
+
+/**
+ * Show an error message to the user
+ * @param {string} message - Error message to display
+ */
+function showError(message) {
+    // Hide loading screen if it's visible
+    hideLoadingScreen();
+    
+    // Create error container if it doesn't exist
+    if (!document.getElementById('error-container')) {
+        const errorContainer = document.createElement('div');
+        errorContainer.id = 'error-container';
+        errorContainer.style.position = 'fixed';
+        errorContainer.style.top = '50%';
+        errorContainer.style.left = '50%';
+        errorContainer.style.transform = 'translate(-50%, -50%)';
+        errorContainer.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
+        errorContainer.style.color = 'white';
+        errorContainer.style.padding = '20px';
+        errorContainer.style.borderRadius = '10px';
+        errorContainer.style.fontFamily = 'Arial, sans-serif';
+        errorContainer.style.zIndex = '1000';
+        errorContainer.style.textAlign = 'center';
+        errorContainer.style.maxWidth = '80%';
+        
+        document.body.appendChild(errorContainer);
+    }
+    
+    // Update error message
+    const errorContainer = document.getElementById('error-container');
+    errorContainer.innerHTML = `
+        <h3>Error</h3>
+        <p>${message}</p>
+        <button onclick="location.reload()">Refresh Page</button>
+    `;
+    
+    // Log error to console
+    console.error(`Game Error: ${message}`);
+    
+    // Track error if analytics is available
+    if (modules.analytics && window.gameAnalytics) {
+        window.gameAnalytics.trackEvent('fatal_error', { message });
+    }
+}
+
+/**
  * Initialize the game
  */
 function initGame() {
@@ -64,7 +137,7 @@ function initGame() {
     verifyModules();
     
     // Initialize modules in sequence with simulated loading
-    setTimeout(() => initializeScene(), 500);
+    setTimeout(() => initializeModules(), 500);
 }
 
 /**
@@ -215,198 +288,219 @@ function hideLoadingScreen() {
 }
 
 /**
- * Initialize the scene
+ * Initialize all game modules
  */
-function initializeScene() {
-    updateLoadingProgress(1, "Initializing scene...");
-    
+function initializeModules() {
     try {
-        window.gameScene.initScene();
-        modules.gameScene = true;
-        console.log("Scene module initialized successfully");
-    } catch (error) {
-        console.error("Error initializing scene module:", error);
-        if (modules.analytics && window.gameAnalytics) {
-            window.gameAnalytics.trackModuleError('scene', error.message);
+        // Track loading progress
+        if (window.gameAnalytics) {
+            window.gameAnalytics.trackLoadingProgress(1, "Starting module initialization");
         }
-    }
-    
-    setTimeout(() => initializePhysics(), 500);
-}
-
-/**
- * Initialize the physics
- */
-function initializePhysics() {
-    updateLoadingProgress(2, "Setting up physics...");
-    
-    try {
-        window.physics.initPhysics();
-        modules.physics = true;
-        console.log("Physics module initialized successfully");
-    } catch (error) {
-        console.error("Error initializing physics module:", error);
-        if (modules.analytics && window.gameAnalytics) {
-            window.gameAnalytics.trackModuleError('physics', error.message);
-        }
-    }
-    
-    setTimeout(() => initializeEnvironment(), 500);
-}
-
-/**
- * Initialize the environment
- */
-function initializeEnvironment() {
-    updateLoadingProgress(3, "Creating city environment...");
-    
-    if (window.environment) {
-        try {
-            window.environment.initEnvironment();
-            modules.environment = true;
-            console.log("Environment module initialized successfully");
-        } catch (error) {
-            console.error("Error initializing environment module:", error);
-            if (modules.analytics && window.gameAnalytics) {
-                window.gameAnalytics.trackModuleError('environment', error.message);
-            }
-        }
-    }
-    
-    setTimeout(() => initializePlayer(), 500);
-}
-
-/**
- * Initialize the player
- */
-function initializePlayer() {
-    updateLoadingProgress(4, "Creating player...");
-    
-    try {
-        window.player.initPlayer();
-        modules.player = true;
-        console.log("Player module initialized successfully");
-    } catch (error) {
-        console.error("Error initializing player module:", error);
-        if (modules.analytics && window.gameAnalytics) {
-            window.gameAnalytics.trackModuleError('player', error.message);
-        }
-    }
-    
-    setTimeout(() => initializeCharacter(), 500);
-}
-
-/**
- * Initialize the character
- */
-function initializeCharacter() {
-    updateLoadingProgress(5, "Loading character model...");
-    
-    if (window.character) {
-        try {
-            console.log("Starting character initialization...");
-            const result = window.character.initCharacter();
-            if (result) {
-                modules.character = true;
-                console.log("Character module initialization started successfully");
-            } else {
-                console.warn("Character initialization returned false");
-                if (modules.analytics && window.gameAnalytics) {
-                    window.gameAnalytics.trackEvent('module_warning', {
-                        module: 'character',
-                        warning: 'Initialization returned false'
-                    });
+        
+        console.log("Initializing modules directly...");
+        
+        // Initialize modules in sequence
+        updateLoadingProgress(1, "Initializing scene...");
+        
+        // Initialize scene
+        if (window.gameScene && window.gameScene.initScene) {
+            try {
+                window.gameScene.initScene();
+                modules.gameScene = true;
+                console.log("Scene module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing scene module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Scene", error.message);
                 }
+                showError("Failed to initialize scene module. Please refresh the page.");
+                return;
             }
-        } catch (error) {
-            console.error("Error initializing character module:", error);
-            if (modules.analytics && window.gameAnalytics) {
-                window.gameAnalytics.trackModuleError('character', error.message);
-            }
+        } else {
+            console.error("Scene module not found or missing initScene method");
+            showError("Scene module not found. Please refresh the page.");
+            return;
         }
-    } else {
-        console.warn("Character module not found!");
-    }
-    
-    setTimeout(() => initializeTiles(), 1000); // Increased timeout to allow character model to load
-}
-
-/**
- * Initialize the tiles
- */
-function initializeTiles() {
-    updateLoadingProgress(6, "Generating world...");
-    
-    try {
-        window.tiles.initTiles();
-        modules.tiles = true;
-        console.log("Tiles module initialized successfully");
+        
+        // Initialize physics
+        updateLoadingProgress(2, "Initializing physics...");
+        
+        if (window.physics && window.physics.initPhysics) {
+            try {
+                window.physics.initPhysics();
+                modules.physics = true;
+                console.log("Physics module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing physics module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Physics", error.message);
+                }
+                showError("Failed to initialize physics module. Please refresh the page.");
+                return;
+            }
+        } else {
+            console.error("Physics module not found or missing initPhysics method");
+            showError("Physics module not found. Please refresh the page.");
+            return;
+        }
+        
+        // Initialize player
+        updateLoadingProgress(3, "Initializing player...");
+        
+        if (window.player && window.player.initPlayer) {
+            try {
+                window.player.initPlayer();
+                modules.player = true;
+                console.log("Player module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing player module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Player", error.message);
+                }
+                showError("Failed to initialize player module. Please refresh the page.");
+                return;
+            }
+        } else {
+            console.error("Player module not found or missing initPlayer method");
+            showError("Player module not found. Please refresh the page.");
+            return;
+        }
+        
+        // Initialize character
+        updateLoadingProgress(4, "Initializing character...");
+        
+        if (window.character && window.character.initCharacter) {
+            try {
+                window.character.initCharacter();
+                modules.character = true;
+                console.log("Character module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing character module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Character", error.message);
+                }
+                // Continue without character
+                console.warn("Continuing without character module");
+            }
+        } else {
+            console.warn("Character module not found or missing initCharacter method");
+        }
+        
+        // Initialize tiles
+        updateLoadingProgress(5, "Initializing tiles...");
+        
+        if (window.tiles && window.tiles.initTiles) {
+            try {
+                window.tiles.initTiles();
+                modules.tiles = true;
+                console.log("Tiles module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing tiles module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Tiles", error.message);
+                }
+                showError("Failed to initialize tiles module. Please refresh the page.");
+                return;
+            }
+        } else {
+            console.error("Tiles module not found or missing initTiles method");
+            showError("Tiles module not found. Please refresh the page.");
+            return;
+        }
+        
+        // Initialize UI
+        updateLoadingProgress(6, "Initializing UI...");
+        
+        if (window.ui && window.ui.initUI) {
+            try {
+                window.ui.initUI();
+                modules.ui = true;
+                console.log("UI module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing UI module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("UI", error.message);
+                }
+                // Continue without UI
+                console.warn("Continuing without UI module");
+            }
+        } else {
+            console.warn("UI module not found or missing initUI method");
+        }
+        
+        // Initialize network
+        updateLoadingProgress(7, "Initializing network...");
+        
+        if (window.network && window.network.initNetwork) {
+            try {
+                window.network.initNetwork();
+                modules.network = true;
+                console.log("Network module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing network module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Network", error.message);
+                }
+                // Continue without network
+                console.warn("Continuing without network module");
+            }
+        } else {
+            console.warn("Network module not found or missing initNetwork method");
+        }
+        
+        // Initialize effects
+        if (window.effects && window.effects.initEffects) {
+            try {
+                window.effects.initEffects();
+                modules.effects = true;
+                console.log("Effects module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing effects module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Effects", error.message);
+                }
+                // Continue without effects
+                console.warn("Continuing without effects module");
+            }
+        } else {
+            console.warn("Effects module not found or missing initEffects method");
+        }
+        
+        // Initialize debug
+        if (window.debug && window.debug.initDebug) {
+            try {
+                window.debug.initDebug();
+                modules.debug = true;
+                console.log("Debug module initialized successfully");
+            } catch (error) {
+                console.error("Error initializing debug module:", error);
+                if (window.gameAnalytics) {
+                    window.gameAnalytics.trackModuleError("Debug", error.message);
+                }
+                // Continue without debug
+                console.warn("Continuing without debug module");
+            }
+        } else {
+            console.warn("Debug module not found or missing initDebug method");
+        }
+        
+        // Track loading progress
+        updateLoadingProgress(8, "All modules initialized");
+        if (window.gameAnalytics) {
+            window.gameAnalytics.trackLoadingProgress(8, "All modules initialized");
+        }
+        
+        // All modules initialized, start the game
+        startGame();
+        
     } catch (error) {
-        console.error("Error initializing tiles module:", error);
-        if (modules.analytics && window.gameAnalytics) {
-            window.gameAnalytics.trackModuleError('tiles', error.message);
+        // Track initialization error
+        if (window.gameAnalytics) {
+            window.gameAnalytics.trackModuleError("Initialization", error.message);
         }
+        console.error("Error initializing modules:", error);
+        showError("Failed to initialize game modules. Please refresh the page.");
     }
-    
-    // Initialize UI separately
-    setTimeout(() => initializeUI(), 300);
-}
-
-/**
- * Initialize the UI
- */
-function initializeUI() {
-    updateLoadingProgress(6.5, "Setting up user interface...");
-    
-    if (window.ui) {
-        try {
-            window.ui.initUI();
-            modules.ui = true;
-            console.log("UI module initialized successfully");
-        } catch (error) {
-            console.error("Error initializing UI module:", error);
-            if (modules.analytics && window.gameAnalytics) {
-                window.gameAnalytics.trackModuleError('ui', error.message);
-            }
-        }
-    } else {
-        console.warn("UI module not found!");
-    }
-    
-    setTimeout(() => initializeNetwork(), 300);
-}
-
-/**
- * Initialize the network
- */
-function initializeNetwork() {
-    updateLoadingProgress(7, "Connecting to server...");
-    
-    if (window.network) {
-        try {
-            window.network.initNetwork();
-            modules.network = true;
-            console.log("Network module initialized successfully");
-        } catch (error) {
-            console.error("Error initializing network module:", error);
-            if (modules.analytics && window.gameAnalytics) {
-                window.gameAnalytics.trackModuleError('network', error.message);
-            }
-        }
-    }
-    
-    // Start the game after a short delay
-    setTimeout(() => finalizeLoading(), 800);
-}
-
-/**
- * Finalize loading and prepare to start the game
- */
-function finalizeLoading() {
-    updateLoadingProgress(8, "Finalizing game setup...");
-    
-    // Add a slight delay for the final loading step to be visible
-    setTimeout(() => startGame(), 1000);
 }
 
 /**

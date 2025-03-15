@@ -209,32 +209,108 @@ function createPlaceholderCharacter() {
     // Create a simple animation system for the placeholder
     characterMixer = {
         update: function(deltaTime) {
-            // Animate legs and arms when moving
+            // Get player movement state
+            let state = { moving: false, running: false, jumping: false, falling: false };
+            if (window.player && window.player.getMovementState) {
+                state = window.player.getMovementState();
+            }
+            
+            // Get player body
+            let playerBody = null;
             if (window.player && window.player.getPlayerBody) {
-                const playerBody = window.player.getPlayerBody();
-                if (playerBody && playerBody.velocity) {
-                    const velocity = playerBody.velocity;
-                    const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-                    
-                    if (speed > 0.5) {
-                        // Animate walking
-                        const time = performance.now() * 0.005;
-                        const amplitude = Math.min(speed * 0.1, 0.3);
-                        
-                        leftLeg.rotation.x = Math.sin(time * 2) * amplitude;
-                        rightLeg.rotation.x = Math.sin(time * 2 + Math.PI) * amplitude;
-                        leftArm.rotation.x = Math.sin(time * 2 + Math.PI) * amplitude;
-                        rightArm.rotation.x = Math.sin(time * 2) * amplitude;
-                    } else {
-                        // Reset to idle pose
-                        leftLeg.rotation.x = 0;
-                        rightLeg.rotation.x = 0;
-                        leftArm.rotation.x = 0;
-                        rightArm.rotation.x = 0;
-                    }
+                playerBody = window.player.getPlayerBody();
+            }
+            
+            if (!playerBody) return;
+            
+            // Reset rotations
+            leftLeg.rotation.set(0, 0, 0);
+            rightLeg.rotation.set(0, 0, 0);
+            leftArm.rotation.set(0, 0, 0);
+            rightArm.rotation.set(0, 0, 0);
+            torso.rotation.set(0, 0, 0);
+            
+            const velocity = playerBody.velocity;
+            const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+            const time = performance.now() * 0.005;
+            
+            if (state.dashing) {
+                // Dash animation
+                const dashPose = Math.sin(time * 5);
+                leftArm.rotation.z = -Math.PI / 4;
+                rightArm.rotation.z = Math.PI / 4;
+                leftLeg.rotation.x = Math.PI / 6;
+                rightLeg.rotation.x = -Math.PI / 6;
+                torso.rotation.x = Math.PI / 8;
+            } else if (state.sliding) {
+                // Slide animation
+                torso.rotation.x = Math.PI / 4;
+                leftLeg.rotation.x = -Math.PI / 3;
+                rightLeg.rotation.x = -Math.PI / 3;
+                leftArm.rotation.x = -Math.PI / 4;
+                rightArm.rotation.x = -Math.PI / 4;
+                
+                // Lower character during slide
+                body.position.y = -0.5;
+            } else if (state.wallRunning) {
+                // Wall run animation
+                const wallRunCycle = Math.sin(time * 3);
+                leftLeg.rotation.x = Math.PI / 4 + wallRunCycle * 0.3;
+                rightLeg.rotation.x = Math.PI / 4 - wallRunCycle * 0.3;
+                leftArm.rotation.x = -Math.PI / 6 + wallRunCycle * 0.2;
+                rightArm.rotation.x = -Math.PI / 6 - wallRunCycle * 0.2;
+                torso.rotation.z = Math.PI / 12;
+            } else if (state.jumping || state.doubleJumping) {
+                // Jump animation
+                leftLeg.rotation.x = Math.PI / 6;
+                rightLeg.rotation.x = Math.PI / 6;
+                leftArm.rotation.x = -Math.PI / 4;
+                rightArm.rotation.x = -Math.PI / 4;
+                
+                // Special pose for double jump
+                if (state.doubleJumping) {
+                    leftArm.rotation.z = -Math.PI / 4;
+                    rightArm.rotation.z = Math.PI / 4;
+                }
+            } else if (state.falling) {
+                // Fall animation
+                leftLeg.rotation.x = 0;
+                rightLeg.rotation.x = 0;
+                leftArm.rotation.x = Math.PI / 6;
+                rightArm.rotation.x = Math.PI / 6;
+            } else if (speed > 0.5) {
+                // Walking/running animation
+                const amplitude = Math.min(speed * 0.1, 0.3);
+                const frequency = state.running ? 3 : 2;
+                
+                leftLeg.rotation.x = Math.sin(time * frequency) * amplitude;
+                rightLeg.rotation.x = Math.sin(time * frequency + Math.PI) * amplitude;
+                leftArm.rotation.x = Math.sin(time * frequency + Math.PI) * amplitude;
+                rightArm.rotation.x = Math.sin(time * frequency) * amplitude;
+                
+                // Slight torso tilt when running
+                if (state.running) {
+                    torso.rotation.x = Math.PI / 16;
                 }
             }
+            
+            // Reset character height if not sliding
+            if (!state.sliding) {
+                body.position.y = 0;
+            }
         }
+    };
+    
+    // Create simple animations for the placeholder
+    characterAnimations = {
+        'idle': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'walk': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'run': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'jump': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'fall': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'dash': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'slide': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } },
+        'wallRun': { play: function() {}, fadeOut: function() {}, reset: function() { return this; }, fadeIn: function() { return this; } }
     };
     
     isCharacterInitialized = true;
@@ -305,8 +381,14 @@ function updateCharacterAnimation(movementState) {
     try {
         let targetAnimation = 'idle';
         
-        // Determine which animation to play
-        if (movementState.doubleJumping) {
+        // Determine which animation to play based on priority
+        if (movementState.dashing) {
+            targetAnimation = 'dash';
+        } else if (movementState.sliding) {
+            targetAnimation = 'slide';
+        } else if (movementState.wallRunning) {
+            targetAnimation = 'wallRun';
+        } else if (movementState.doubleJumping) {
             targetAnimation = 'doubleJump';
         } else if (movementState.jumping) {
             targetAnimation = 'jump';
@@ -324,22 +406,23 @@ function updateCharacterAnimation(movementState) {
         
         // If we don't have the target animation, use a fallback
         if (!characterAnimations[targetAnimation]) {
-            if (targetAnimation === 'doubleJump') {
-                // If no double jump animation, use jump
-                targetAnimation = 'jump';
-            } else if (targetAnimation === 'jump' || targetAnimation === 'fall') {
-                // If no jump/fall animation, use idle
-                targetAnimation = 'idle';
-            } else if (targetAnimation === 'run') {
-                // If no run animation, use walk
-                targetAnimation = 'walk';
-            } else if (targetAnimation === 'walk') {
-                // If no walk animation, use idle
-                targetAnimation = 'idle';
-            }
+            // Define fallback animations
+            const fallbacks = {
+                'dash': 'run',
+                'slide': 'run',
+                'wallRun': 'jump',
+                'doubleJump': 'jump',
+                'jump': 'idle',
+                'fall': 'idle',
+                'run': 'walk',
+                'walk': 'idle'
+            };
             
-            // If we still don't have a valid animation, use the first available one
-            if (!characterAnimations[targetAnimation]) {
+            // Try to use the fallback animation
+            if (fallbacks[targetAnimation] && characterAnimations[fallbacks[targetAnimation]]) {
+                targetAnimation = fallbacks[targetAnimation];
+            } else {
+                // If we still don't have a valid animation, use the first available one
                 const availableAnimations = Object.keys(characterAnimations);
                 if (availableAnimations.length > 0) {
                     targetAnimation = availableAnimations[0];
@@ -360,8 +443,10 @@ function updateCharacterAnimation(movementState) {
                 // Adjust fade time based on animation type for more natural transitions
                 let fadeTime = ANIMATION_FADE_TIME;
                 
-                // Quick transitions for jumps and falls
-                if (targetAnimation === 'jump' || targetAnimation === 'doubleJump' || targetAnimation === 'fall') {
+                // Quick transitions for action animations
+                if (targetAnimation === 'jump' || targetAnimation === 'doubleJump' || 
+                    targetAnimation === 'fall' || targetAnimation === 'dash' || 
+                    targetAnimation === 'slide' || targetAnimation === 'wallRun') {
                     fadeTime = ANIMATION_FADE_TIME / 2;
                 }
                 
@@ -369,6 +454,24 @@ function updateCharacterAnimation(movementState) {
                 if ((currentAnimation === 'walk' && targetAnimation === 'run') || 
                     (currentAnimation === 'run' && targetAnimation === 'walk')) {
                     fadeTime = ANIMATION_FADE_TIME * 1.5;
+                }
+                
+                // Special handling for dash animation
+                if (targetAnimation === 'dash') {
+                    // Make dash animation play faster
+                    target.timeScale = 1.5;
+                } else {
+                    // Reset time scale for other animations
+                    target.timeScale = 1.0;
+                }
+                
+                // Special handling for slide animation
+                if (targetAnimation === 'slide') {
+                    // Make slide animation loop during the slide
+                    target.setLoop(THREE.LoopRepeat);
+                } else if (target.getLoop && target.getLoop() !== THREE.LoopRepeat) {
+                    // Reset loop mode for other animations if needed
+                    target.setLoop(THREE.LoopRepeat);
                 }
                 
                 current.fadeOut(fadeTime);

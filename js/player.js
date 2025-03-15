@@ -18,8 +18,31 @@ let movementState = {
     running: false,
     jumping: false,
     falling: false,
-    doubleJumping: false
+    doubleJumping: false,
+    wallRunning: false,
+    sliding: false,
+    dashing: false
 };
+
+// Advanced movement cooldowns and states
+let wallRunTimer = 0;
+let wallRunMaxTime = 2000; // Max wall run time in ms
+let wallRunDirection = { x: 0, z: 0 }; // Direction of wall run
+let wallNormal = { x: 0, z: 0 }; // Normal of the wall being run on
+let canWallRun = true;
+let wallRunCooldown = 0;
+
+let dashTimer = 0;
+let dashCooldown = 0;
+const DASH_COOLDOWN_TIME = 1500; // ms before dash is available again
+const DASH_DURATION = 200; // ms
+const DASH_FORCE = 30;
+
+let slideTimer = 0;
+const SLIDE_DURATION = 800; // ms
+const SLIDE_COOLDOWN_TIME = 1000; // ms
+let slideCooldown = 0;
+let canSlide = true;
 
 // Scoring system
 const SCORE_HEIGHT_MULTIPLIER = 10; // Points per unit of height
@@ -37,6 +60,8 @@ const PLAYER_MOVE_SPEED = 5;
 const PLAYER_RUN_SPEED = 10;
 const PLAYER_JUMP_FORCE = 12; // Increased jump force
 const PLAYER_DOUBLE_JUMP_FORCE = 10; // Slightly weaker double jump
+const WALL_JUMP_FORCE = 14; // Stronger jump off walls
+const WALL_RUN_SPEED = 8; // Speed during wall running
 const FALL_THRESHOLD = -2;
 const JUMP_COOLDOWN = 200; // Milliseconds before allowing another jump
 let lastJumpTime = 0;
@@ -110,12 +135,17 @@ function handleCollision(event) {
             movementState.jumping = false;
             movementState.falling = false;
             movementState.doubleJumping = false;
+            movementState.wallRunning = false;
             
             // Check if this is a tile collision for scoring
             if (event.body.position.y > 0) {
                 // This is likely a tile, not the ground
                 handleTileCollision(event.body);
             }
+        } 
+        // Check for wall running
+        else if (checkWallRun(contactNormal)) {
+            startWallRun(contactNormal);
         }
     }
 }
@@ -236,6 +266,7 @@ function updateScore() {
 function handleInput() {
     // Get keyboard state from the physics module
     const keyboard = window.physics.getKeyboard();
+    const currentTime = performance.now();
     
     // Calculate movement direction
     let moveX = 0;
@@ -248,16 +279,39 @@ function handleInput() {
     
     // Determine if running (shift key)
     const isRunning = keyboard.Shift;
-    const currentSpeed = isRunning ? PLAYER_RUN_SPEED : PLAYER_MOVE_SPEED;
     
     // Update movement state
-    movementState.running = isRunning;
+    movementState.running = isRunning && !movementState.sliding && !movementState.dashing;
+    
+    // Handle dash ability (E key)
+    if ((keyboard.e || keyboard.KeyE) && dashCooldown <= 0 && !movementState.dashing) {
+        startDash();
+    }
+    
+    // Update dash state
+    if (movementState.dashing) {
+        updateDash(currentTime);
+    }
+    
+    // Handle slide ability (C key)
+    if ((keyboard.c || keyboard.KeyC) && canSlide && !movementState.sliding && 
+        movementState.moving && !movementState.jumping && !movementState.falling && slideCooldown <= 0) {
+        startSlide();
+    }
+    
+    // Update slide state
+    if (movementState.sliding) {
+        updateSlide(currentTime);
+    }
+    
+    // Update wall running
+    updateWallRun(currentTime);
     
     // Check if player is in air
-    const isInAir = !canJump;
+    const isInAir = !canJump && !movementState.wallRunning;
     
-    // Apply movement force if moving
-    if (moveX !== 0 || moveZ !== 0) {
+    // Apply movement force if moving and not dashing
+    if ((moveX !== 0 || moveZ !== 0) && !movementState.dashing) {
         // Normalize for diagonal movement
         const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
         moveX /= length;
@@ -280,7 +334,12 @@ function handleInput() {
         // Calculate force based on current velocity to prevent excessive acceleration
         const currentVelocity = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
         const currentSpeed = currentVelocity.length();
-        const targetSpeed = isRunning ? PLAYER_RUN_SPEED : PLAYER_MOVE_SPEED;
+        
+        // Determine target speed based on movement state
+        let targetSpeed = PLAYER_MOVE_SPEED;
+        if (movementState.running) targetSpeed = PLAYER_RUN_SPEED;
+        if (movementState.wallRunning) targetSpeed = WALL_RUN_SPEED;
+        if (movementState.sliding) targetSpeed = PLAYER_RUN_SPEED * 1.2; // Sliding is faster than running
         
         // Calculate force multiplier based on how close we are to target speed
         // This creates smoother acceleration and deceleration
@@ -290,36 +349,66 @@ function handleInput() {
             forceMultiplier = Math.max(0.2, 1.0 - (currentSpeed / targetSpeed));
             
             // If we're changing direction, apply more force
-            const velocityDirection = currentVelocity.normalize();
-            const movementVector = new CANNON.Vec3(rotatedMoveX, 0, rotatedMoveZ);
-            const dotProduct = velocityDirection.dot(movementVector);
-            
-            // If dot product is negative, we're changing direction
-            if (dotProduct < 0) {
-                forceMultiplier = 1.0;
+            if (currentSpeed > 0.1) {  // Only check direction if we're actually moving
+                // Create a normalized copy of the current velocity
+                const velocityDirection = new CANNON.Vec3(
+                    currentVelocity.x / currentSpeed,
+                    currentVelocity.y / currentSpeed,
+                    currentVelocity.z / currentSpeed
+                );
+                
+                const movementVector = new CANNON.Vec3(rotatedMoveX, 0, rotatedMoveZ);
+                // Normalize movement vector
+                const movementLength = Math.sqrt(rotatedMoveX * rotatedMoveX + rotatedMoveZ * rotatedMoveZ);
+                if (movementLength > 0) {
+                    movementVector.x /= movementLength;
+                    movementVector.z /= movementLength;
+                }
+                
+                // Calculate dot product manually
+                const dotProduct = velocityDirection.x * movementVector.x + 
+                                  velocityDirection.y * movementVector.y + 
+                                  velocityDirection.z * movementVector.z;
+                
+                // If dot product is negative, we're changing direction
+                if (dotProduct < 0) {
+                    forceMultiplier = 1.0;
+                }
             }
         }
         
         // Apply reduced control in air
-        if (isInAir) {
+        if (isInAir && !movementState.wallRunning) {
             forceMultiplier *= AIR_CONTROL;
         }
         
         // Apply force to move the player with the calculated multiplier
-        playerBody.applyImpulse(
-            new CANNON.Vec3(
-                rotatedMoveX * currentSpeed * forceMultiplier, 
-                0, 
-                rotatedMoveZ * currentSpeed * forceMultiplier
-            ),
-            new CANNON.Vec3(0, 0, 0)
-        );
+        if (!movementState.sliding) {
+            playerBody.applyImpulse(
+                new CANNON.Vec3(
+                    rotatedMoveX * targetSpeed * forceMultiplier, 
+                    0, 
+                    rotatedMoveZ * targetSpeed * forceMultiplier
+                ),
+                new CANNON.Vec3(0, 0, 0)
+            );
+        } else {
+            // During slide, only apply directional control at reduced rate
+            playerBody.applyImpulse(
+                new CANNON.Vec3(
+                    rotatedMoveX * targetSpeed * forceMultiplier * 0.3, 
+                    0, 
+                    rotatedMoveZ * targetSpeed * forceMultiplier * 0.3
+                ),
+                new CANNON.Vec3(0, 0, 0)
+            );
+        }
         
         // Apply velocity damping to prevent excessive speed
         const velocity = playerBody.velocity;
         const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
         
-        if (speed > MAX_VELOCITY) {
+        if (speed > MAX_VELOCITY && !movementState.dashing) {
             const scale = MAX_VELOCITY / speed;
             playerBody.velocity.x *= scale;
             playerBody.velocity.z *= scale;
@@ -327,7 +416,7 @@ function handleInput() {
         
         // Update movement state
         movementState.moving = true;
-    } else {
+    } else if (!movementState.dashing && !movementState.sliding) {
         // Apply damping when not actively moving
         playerBody.velocity.x *= MOVEMENT_DAMPING;
         playerBody.velocity.z *= MOVEMENT_DAMPING;
@@ -337,7 +426,6 @@ function handleInput() {
     }
     
     // Handle jumping
-    const currentTime = performance.now();
     const jumpCooldownElapsed = currentTime - lastJumpTime > JUMP_COOLDOWN;
     
     if ((keyboard[' '] || keyboard.Space) && jumpCooldownElapsed) {
@@ -351,11 +439,16 @@ function handleInput() {
             // Update movement state
             movementState.jumping = true;
             movementState.doubleJumping = false;
+            movementState.sliding = false;
             
             // Play jump sound if available
             if (window.audio && window.audio.playSound) {
                 window.audio.playSound('jump');
             }
+        } else if (movementState.wallRunning) {
+            // Wall jump - jump away from wall
+            performWallJump();
+            lastJumpTime = currentTime;
         } else if (hasDoubleJump) {
             // Double jump
             playerBody.velocity.y = PLAYER_DOUBLE_JUMP_FORCE;
@@ -372,8 +465,263 @@ function handleInput() {
         }
     }
     
+    // Update cooldowns
+    if (dashCooldown > 0) {
+        dashCooldown -= 16; // Approximate time between frames
+    }
+    
+    if (slideCooldown > 0) {
+        slideCooldown -= 16;
+    }
+    
+    if (wallRunCooldown > 0) {
+        wallRunCooldown -= 16;
+    }
+    
     // Update movement state based on velocity
     updateMovementState();
+}
+
+/**
+ * Start a dash in the current movement direction
+ */
+function startDash() {
+    if (dashCooldown <= 0) {
+        movementState.dashing = true;
+        dashTimer = performance.now();
+        
+        // Get current movement direction or use facing direction if not moving
+        let dashDirection = { x: 0, z: 0 };
+        
+        if (Math.abs(movementDirection.x) > 0.1 || Math.abs(movementDirection.z) > 0.1) {
+            dashDirection = { ...movementDirection };
+        } else if (playerBody.quaternion) {
+            // Use player's facing direction if not moving
+            const rotation = new THREE.Euler().setFromQuaternion(
+                new THREE.Quaternion(
+                    playerBody.quaternion.x,
+                    playerBody.quaternion.y,
+                    playerBody.quaternion.z,
+                    playerBody.quaternion.w
+                )
+            );
+            dashDirection.x = Math.sin(rotation.y);
+            dashDirection.z = Math.cos(rotation.y);
+        }
+        
+        // Normalize direction
+        const length = Math.sqrt(dashDirection.x * dashDirection.x + dashDirection.z * dashDirection.z);
+        if (length > 0) {
+            dashDirection.x /= length;
+            dashDirection.z /= length;
+            
+            // Apply dash force
+            playerBody.velocity.x = dashDirection.x * DASH_FORCE;
+            playerBody.velocity.z = dashDirection.z * DASH_FORCE;
+            
+            // Slight upward boost if falling
+            if (playerBody.velocity.y < 0) {
+                playerBody.velocity.y = Math.max(playerBody.velocity.y, 0);
+            }
+            
+            // Play dash sound if available
+            if (window.audio && window.audio.playSound) {
+                window.audio.playSound('dash');
+            }
+            
+            // Trigger dash effect if available
+            if (window.effects && window.effects.createDashEffect) {
+                window.effects.createDashEffect(playerBody.position, dashDirection);
+            }
+        }
+    }
+}
+
+/**
+ * Update dash state
+ */
+function updateDash(currentTime) {
+    if (movementState.dashing && currentTime - dashTimer >= DASH_DURATION) {
+        // End dash
+        movementState.dashing = false;
+        dashCooldown = DASH_COOLDOWN_TIME;
+        
+        // Apply damping to smoothly end dash
+        playerBody.velocity.x *= 0.5;
+        playerBody.velocity.z *= 0.5;
+    }
+}
+
+/**
+ * Start a slide in the current movement direction
+ */
+function startSlide() {
+    if (canSlide && !movementState.sliding && slideCooldown <= 0) {
+        movementState.sliding = true;
+        slideTimer = performance.now();
+        
+        // Get current velocity
+        const velocity = playerBody.velocity;
+        const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        
+        // Only slide if moving fast enough
+        if (horizontalSpeed > 3) {
+            // Apply initial slide boost
+            const boostFactor = 1.5;
+            playerBody.velocity.x *= boostFactor;
+            playerBody.velocity.z *= boostFactor;
+            
+            // Lower player height (handled in character animation)
+            
+            // Play slide sound if available
+            if (window.audio && window.audio.playSound) {
+                window.audio.playSound('slide');
+            }
+        } else {
+            // Not moving fast enough, cancel slide
+            movementState.sliding = false;
+        }
+    }
+}
+
+/**
+ * Update slide state
+ */
+function updateSlide(currentTime) {
+    if (movementState.sliding) {
+        if (currentTime - slideTimer >= SLIDE_DURATION) {
+            // End slide
+            movementState.sliding = false;
+            slideCooldown = SLIDE_COOLDOWN_TIME;
+        } else {
+            // During slide, maintain momentum but apply slight deceleration
+            playerBody.velocity.x *= 0.99;
+            playerBody.velocity.z *= 0.99;
+        }
+    }
+}
+
+/**
+ * Check if player can wall run on a surface
+ */
+function checkWallRun(contactNormal) {
+    // Wall must be vertical (normal horizontal)
+    const isVerticalWall = Math.abs(contactNormal.y) < 0.3;
+    
+    // Player must be moving
+    const isMoving = movementState.moving;
+    
+    // Player must not be on ground
+    const isInAir = !canJump;
+    
+    // Wall run cooldown must be over
+    const canWallRunNow = wallRunCooldown <= 0;
+    
+    return isVerticalWall && isMoving && isInAir && canWallRunNow;
+}
+
+/**
+ * Start wall running
+ */
+function startWallRun(contactNormal) {
+    // Store wall normal
+    wallNormal.x = contactNormal.x;
+    wallNormal.z = contactNormal.z;
+    
+    // Calculate wall run direction (perpendicular to normal)
+    const dotProduct = movementDirection.x * wallNormal.x + movementDirection.z * wallNormal.z;
+    
+    wallRunDirection.x = movementDirection.x - (2 * dotProduct * wallNormal.x);
+    wallRunDirection.z = movementDirection.z - (2 * dotProduct * wallNormal.z);
+    
+    // Normalize direction
+    const length = Math.sqrt(wallRunDirection.x * wallRunDirection.x + wallRunDirection.z * wallRunDirection.z);
+    if (length > 0) {
+        wallRunDirection.x /= length;
+        wallRunDirection.z /= length;
+    }
+    
+    // Start wall run
+    movementState.wallRunning = true;
+    wallRunTimer = performance.now();
+    
+    // Apply upward force to counter gravity
+    playerBody.velocity.y = Math.max(playerBody.velocity.y, 0);
+    
+    // Play wall run sound if available
+    if (window.audio && window.audio.playSound) {
+        window.audio.playSound('wallRun');
+    }
+}
+
+/**
+ * Update wall running state
+ */
+function updateWallRun(currentTime) {
+    if (movementState.wallRunning) {
+        // Check if wall run time exceeded
+        if (currentTime - wallRunTimer >= wallRunMaxTime) {
+            endWallRun();
+            return;
+        }
+        
+        // Apply force in wall run direction
+        playerBody.applyImpulse(
+            new CANNON.Vec3(
+                wallRunDirection.x * WALL_RUN_SPEED * 0.1,
+                0,
+                wallRunDirection.z * WALL_RUN_SPEED * 0.1
+            ),
+            new CANNON.Vec3(0, 0, 0)
+        );
+        
+        // Apply reduced gravity
+        playerBody.velocity.y = Math.max(playerBody.velocity.y - 0.1, -2);
+        
+        // Create wall run particles if available
+        if (window.effects && window.effects.createWallRunParticles) {
+            window.effects.createWallRunParticles(playerBody.position, wallNormal);
+        }
+    }
+}
+
+/**
+ * End wall running
+ */
+function endWallRun() {
+    movementState.wallRunning = false;
+    wallRunCooldown = 500; // Cooldown before next wall run
+}
+
+/**
+ * Perform a wall jump
+ */
+function performWallJump() {
+    // Jump away from wall
+    const jumpDirection = {
+        x: wallNormal.x,
+        z: wallNormal.z
+    };
+    
+    // Apply wall jump force
+    playerBody.velocity.y = WALL_JUMP_FORCE;
+    playerBody.velocity.x = jumpDirection.x * WALL_JUMP_FORCE * 0.7;
+    playerBody.velocity.z = jumpDirection.z * WALL_JUMP_FORCE * 0.7;
+    
+    // End wall run
+    endWallRun();
+    
+    // Reset double jump
+    hasDoubleJump = true;
+    
+    // Update movement state
+    movementState.jumping = true;
+    movementState.wallRunning = false;
+    
+    // Play wall jump sound if available
+    if (window.audio && window.audio.playSound) {
+        window.audio.playSound('wallJump');
+    }
 }
 
 /**
@@ -436,6 +784,7 @@ function restartPlayer() {
     movementState.jumping = false;
     movementState.falling = false;
     movementState.doubleJumping = false;
+    movementState.wallRunning = false;
     
     // If health is zero, reset everything
     if (health <= 0) {
@@ -534,5 +883,13 @@ window.player = {
     takeDamage,
     getHealth,
     getScore,
-    getMovementState
+    getMovementState,
+    createOtherPlayerMesh,
+    getMouseControls: function() {
+        // Return default mouse controls if not implemented
+        return {
+            yaw: 0,
+            pitch: 0
+        };
+    }
 }; 

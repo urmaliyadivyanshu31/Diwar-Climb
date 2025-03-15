@@ -69,14 +69,27 @@ const analytics = {
         // Check if window.va (Vercel Analytics) is available
         if (typeof window.va !== 'undefined') {
             try {
-                window.va.track(eventName, properties);
-                console.log(`Analytics: Tracked event "${eventName}"`, properties);
+                // In local development, va might be the fallback function
+                if (typeof window.va === 'function') {
+                    window.va('event', eventName, properties);
+                } else if (window.va && typeof window.va.track === 'function') {
+                    window.va.track(eventName, properties);
+                }
+                
+                // Only log in development or if debug is enabled
+                if (window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' ||
+                    (window.debug && window.debug.isEnabled && window.debug.isEnabled())) {
+                    console.log(`Analytics: Tracked event "${eventName}"`, properties);
+                }
             } catch (error) {
                 console.warn(`Analytics: Failed to track event "${eventName}"`, error);
             }
         } else {
             // Fallback to console logging for development
-            console.log(`Analytics Event: ${eventName}`, properties);
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log(`Analytics Event (dev only): ${eventName}`, properties);
+            }
         }
     },
     

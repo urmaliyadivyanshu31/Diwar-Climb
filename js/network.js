@@ -85,8 +85,12 @@ function handleServerMessage(message) {
                 break;
                 
             case 'positions':
-                // Update other players' positions
-                updateOtherPlayers(data.positions);
+                // Update other players' positions only if positions data exists
+                if (data.positions) {
+                    updateOtherPlayers(data.positions);
+                } else {
+                    console.log('Received positions message with no positions data');
+                }
                 break;
                 
             default:

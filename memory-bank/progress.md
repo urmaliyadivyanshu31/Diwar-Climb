@@ -127,6 +127,24 @@ This document tracks the progress of the Diwar Climb game development.
   - Enhanced error handling throughout the codebase
   - Improved loading system with better asset management
 
+### Step 14: Advanced Movement Mechanics
+
+### Completed:
+- Added advanced movement mechanics including wall running, sliding, and dashing
+- Implemented special effects for each movement ability
+- Enhanced camera controls to provide visual feedback for each movement type
+- Updated UI to include controls for the new movement abilities
+- Added visual effects system for particle effects and movement trails
+- Implemented camera effects (FOV changes, tilting) for different movement states
+- Enhanced lighting effects to respond to player actions
+
+### Next Steps:
+- Add sound effects for the new movement abilities
+- Implement level design that takes advantage of the new movement mechanics
+- Add achievements for performing advanced movement combos
+- Create tutorial sections to teach players the new movement abilities
+- Optimize performance for particle effects on lower-end devices
+
 ## Next Steps
 
 ### Future Enhancements

@@ -149,6 +149,9 @@ function setupLighting() {
     
     scene.add(directionalLight);
     
+    // Store directionalLight in gameScene for access in other functions
+    window.gameScene.directionalLight = directionalLight;
+    
     // Add a hemisphere light for more natural lighting
     const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x404040, 0.6);
     scene.add(hemisphereLight);
@@ -233,7 +236,7 @@ function setupOrbitControls() {
             touchStartY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
             event.preventDefault();
         }
-    });
+    }, { passive: false });
     
     canvas.addEventListener('touchmove', (event) => {
         if (isOrbitEnabled && event.touches.length === 2) {
@@ -255,7 +258,7 @@ function setupOrbitControls() {
             
             event.preventDefault();
         }
-    });
+    }, { passive: false });
     
     canvas.addEventListener('touchend', (event) => {
         if (event.touches.length < 2) {
@@ -294,93 +297,66 @@ function setupOrbitControls() {
 }
 
 /**
- * Update the camera to follow the player
+ * Update camera position and rotation based on player state
+ * @param {number} deltaTime - Time since last frame in seconds
  */
-function updateCamera() {
-    // Check if player module is available
-    if (!window.player) {
-        console.warn("Player module not available, cannot update camera");
-        return;
-    }
+function updateCamera(deltaTime) {
+    if (!window.player || !window.player.getPlayerBody()) return;
     
-    // Get player position
-    const playerPosition = window.player.getPlayerPosition();
+    const playerBody = window.player.getPlayerBody();
+    const playerPosition = playerBody.position.clone ? playerBody.position.clone() : playerBody.position;
+    const movementState = window.player.getMovementState();
     
-    // If player position is not available, return
-    if (!playerPosition) {
-        console.warn("Player position not available, cannot update camera");
-        return;
-    }
+    // Get camera target position based on player state
+    let cameraTargetPosition = new THREE.Vector3();
+    let cameraTargetLookAt = new THREE.Vector3();
     
-    // Calculate ideal camera position based on orbit angle
-    let idealCameraPos = {
-        x: playerPosition.x,
-        y: playerPosition.y + CAMERA_HEIGHT,
-        z: playerPosition.z + CAMERA_DISTANCE
-    };
+    // Base camera height offset
+    let cameraHeightOffset = 1.7; // Default camera height
     
-    // Apply orbit rotation if enabled or in orbit mode
-    if (isOrbitEnabled || Math.abs(cameraOrbitAngle) > 0.01 || Math.abs(cameraVerticalAngle) > 0.01) {
-        // Calculate camera position based on spherical coordinates
-        const horizontalDistance = CAMERA_DISTANCE * Math.cos(cameraVerticalAngle);
+    // Apply different camera behaviors based on movement state
+    if (movementState.sliding) {
+        // Lower camera when sliding
+        cameraHeightOffset = 0.8;
         
-        idealCameraPos = {
-            x: playerPosition.x + horizontalDistance * Math.sin(cameraOrbitAngle),
-            y: playerPosition.y + CAMERA_HEIGHT + CAMERA_DISTANCE * Math.sin(cameraVerticalAngle),
-            z: playerPosition.z + horizontalDistance * Math.cos(cameraOrbitAngle)
-        };
+        // Add slight tilt effect when sliding
+        const slideProgress = Math.min(movementState.slidingTime / 0.3, 1.0);
+        camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, -0.1, slideProgress * deltaTime * 10);
+    } else if (movementState.wallRunning) {
+        // Tilt camera when wall running
+        const wallNormal = movementState.wallNormal || new THREE.Vector3(1, 0, 0);
+        const tiltDirection = Math.sign(wallNormal.dot(new THREE.Vector3(1, 0, 0)));
+        const wallRunProgress = Math.min(movementState.wallRunningTime / 0.3, 1.0);
+        camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, tiltDirection * 0.15, wallRunProgress * deltaTime * 8);
+    } else if (movementState.dashing) {
+        // Add FOV effect when dashing
+        const dashProgress = Math.min(movementState.dashingTime / 0.2, 1.0);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, 85, dashProgress * deltaTime * 10);
     } else {
-        // Get player movement direction for dynamic camera adjustments
-        let movementDirection = { x: 0, z: 0 };
-        if (window.player.getMovementDirection) {
-            movementDirection = window.player.getMovementDirection();
-        }
-        
-        // Adjust camera position based on movement direction for a more dynamic feel
-        if (Math.abs(movementDirection.x) > 0.1) {
-            // Shift camera slightly to the side when moving left/right
-            idealCameraPos.x -= movementDirection.x * 2;
-        }
+        // Reset camera effects
+        camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, 0, deltaTime * 5);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, 75, deltaTime * 5);
     }
     
-    // Calculate ideal look-at point
-    const idealLookAt = {
-        x: playerPosition.x,
-        y: playerPosition.y + LOOK_AHEAD_DISTANCE / 2,
-        z: playerPosition.z
-    };
+    // Update camera FOV
+    if (camera.fov !== camera.oldFov) {
+        camera.oldFov = camera.fov;
+        camera.updateProjectionMatrix();
+    }
     
-    // Smoothly interpolate camera position (lerp)
-    cameraTarget.x = cameraTarget.x + (idealCameraPos.x - cameraTarget.x) * CAMERA_LERP;
-    cameraTarget.y = cameraTarget.y + (idealCameraPos.y - cameraTarget.y) * CAMERA_LERP;
-    cameraTarget.z = cameraTarget.z + (idealCameraPos.z - cameraTarget.z) * CAMERA_LERP;
+    // Set camera position based on player position and offset
+    cameraTargetPosition.copy(playerPosition).add(new THREE.Vector3(0, cameraHeightOffset, 0));
     
-    // Smoothly interpolate look-at point
-    cameraLookAt.x = cameraLookAt.x + (idealLookAt.x - cameraLookAt.x) * CAMERA_LERP;
-    cameraLookAt.y = cameraLookAt.y + (idealLookAt.y - cameraLookAt.y) * CAMERA_LERP;
-    cameraLookAt.z = cameraLookAt.z + (idealLookAt.z - cameraLookAt.z) * CAMERA_LERP;
+    // Smooth camera movement
+    camera.position.lerp(cameraTargetPosition, deltaTime * 10);
     
-    // Update camera position
-    camera.position.set(cameraTarget.x, cameraTarget.y, cameraTarget.z);
-    
-    // Look at the interpolated target
-    camera.lookAt(cameraLookAt.x, cameraLookAt.y, cameraLookAt.z);
-    
-    // Add slight tilt based on player movement for dynamic feel
-    if (!isOrbitEnabled && Math.abs(cameraOrbitAngle) < 0.01) {
-        // Get player movement direction
-        let movementDirection = { x: 0, z: 0 };
-        if (window.player.getMovementDirection) {
-            movementDirection = window.player.getMovementDirection();
-        }
-        
-        if (Math.abs(movementDirection.x) > 0.1) {
-            // Add a slight tilt in the direction of movement
-            const tiltAmount = 0.05;
-            camera.rotation.z = -movementDirection.x * tiltAmount;
-        } else {
-            // Smoothly reset tilt when not moving
-            camera.rotation.z *= 0.9;
+    // Update camera look direction based on player input
+    if (window.player && typeof window.player.getMouseControls === 'function') {
+        const mouseControls = window.player.getMouseControls();
+        if (mouseControls) {
+            // Apply mouse rotation to camera
+            camera.rotation.y = -mouseControls.yaw;
+            camera.rotation.x = mouseControls.pitch;
         }
     }
 }
@@ -434,6 +410,11 @@ function animate() {
             window.ui.updateUI(deltaTime);
         }
         
+        // Update effects
+        if (window.effects) {
+            window.effects.updateEffects(deltaTime);
+        }
+        
         // Update debug info if enabled
         if (window.debug && typeof window.debug.isEnabled === 'function' && window.debug.isEnabled()) {
             window.debug.updateDebug(deltaTime);
@@ -451,6 +432,11 @@ function animate() {
  */
 function startGame() {
     console.log("Starting animation loop...");
+    
+    // Initialize effects if available
+    if (window.effects && window.effects.initEffects) {
+        window.effects.initEffects();
+    }
     
     // Start animation loop
     animate();
@@ -501,40 +487,57 @@ function getRenderer() {
 }
 
 /**
- * Update the scene
+ * Update scene elements
+ * @param {number} deltaTime - Time since last frame in seconds
  */
 function updateScene(deltaTime) {
-    // Update player light position to follow player
-    if (window.gameScene && window.gameScene.playerLight && window.player && window.player.getPlayerPosition) {
-        try {
-            const playerPos = window.player.getPlayerPosition();
-            if (playerPos) {
-                window.gameScene.playerLight.position.set(
-                    playerPos.x,
-                    playerPos.y + 5, // Position light above player
-                    playerPos.z
+    // Update camera
+    updateCamera(deltaTime);
+    
+    // Update lighting if needed
+    updateLighting(deltaTime);
+    
+    // Update any other scene elements
+    updateSceneElements(deltaTime);
+}
+
+/**
+ * Update lighting effects
+ * @param {number} deltaTime - Time since last frame in seconds
+ */
+function updateLighting(deltaTime) {
+    // Update dynamic lighting if needed
+    if (window.player && window.player.getMovementState) {
+        const movementState = window.player.getMovementState();
+        
+        // Add lighting effects for special movements
+        if (movementState.dashing && window.gameScene.directionalLight) {
+            // Increase light intensity during dash
+            window.gameScene.directionalLight.intensity = THREE.MathUtils.lerp(
+                window.gameScene.directionalLight.intensity, 
+                1.5, 
+                deltaTime * 5
+            );
+        } else {
+            // Reset light intensity
+            if (window.gameScene.directionalLight) {
+                window.gameScene.directionalLight.intensity = THREE.MathUtils.lerp(
+                    window.gameScene.directionalLight.intensity, 
+                    1.0, 
+                    deltaTime * 3
                 );
             }
-        } catch (error) {
-            console.warn("Error updating player light:", error);
         }
     }
-    
-    // Update camera to follow player
-    try {
-        updateCamera();
-    } catch (error) {
-        console.warn("Error updating camera:", error);
-    }
-    
-    // Update moving tiles
-    if (window.tiles && window.tiles.updateMovingTiles) {
-        try {
-            window.tiles.updateMovingTiles(deltaTime);
-        } catch (error) {
-            console.warn("Error updating moving tiles:", error);
-        }
-    }
+}
+
+/**
+ * Update other scene elements
+ * @param {number} deltaTime - Time since last frame in seconds
+ */
+function updateSceneElements(deltaTime) {
+    // Update any other scene elements that need animation
+    // For example, background elements, environmental effects, etc.
 }
 
 /**

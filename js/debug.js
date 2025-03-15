@@ -10,7 +10,7 @@ let isDebugEnabled = true;
 let debugContainer;
 let debugLastTime = 0;
 let debugFrameCount = 0;
-let fps = 0;
+let debugFps = 0;
 
 /**
  * Create the debug container
@@ -60,19 +60,19 @@ function updateFpsCounter(deltaTime) {
     
     // Update FPS every second
     if (performance.now() - debugLastTime >= 1000) {
-        fps = Math.round(debugFrameCount * 1000 / (performance.now() - debugLastTime));
+        debugFps = Math.round(debugFrameCount * 1000 / (performance.now() - debugLastTime));
         debugFrameCount = 0;
         debugLastTime = performance.now();
         
         // Update FPS counter
         const fpsCounter = document.getElementById('fps-counter');
         if (fpsCounter) {
-            fpsCounter.textContent = fps;
+            fpsCounter.textContent = debugFps;
             
             // Color code based on performance
-            if (fps >= 55) {
+            if (debugFps >= 55) {
                 fpsCounter.style.color = '#4CAF50'; // Green
-            } else if (fps >= 30) {
+            } else if (debugFps >= 30) {
                 fpsCounter.style.color = '#FFC107'; // Yellow
             } else {
                 fpsCounter.style.color = '#F44336'; // Red
