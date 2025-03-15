@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diwar Climb - Multiplayer Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-left: 4px solid #4CAF50;
+        }
+        #log {
+            height: 300px;
+            overflow-y: auto;
+            background-color: #f8f8f8;
+            padding: 10px;
+            border: 1px solid #ddd;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .info {
+            color: #0066cc;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Diwar Climb - Multiplayer Test</h1>
+        
+        <div id="status">Status: Disconnected</div>
+        
+        <div class="button-container">
+            <button id="connect">Connect to Server</button>
+            <button id="disconnect" disabled>Disconnect</button>
+            <button id="send" disabled>Send Random Position</button>
+        </div>
+        
+        <h2>Connection Log:</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const connectBtn = document.getElementById('connect');
+        const disconnectBtn = document.getElementById('disconnect');
+        const sendBtn = document.getElementById('send');
+        
+        // WebSocket connection
+        let socket = null;
+        let clientId = null;
+        let sendInterval = null;
+        
+        // Log message to the log element
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        
+        // Update connection status
+        function updateStatus(status) {
+            statusEl.textContent = `Status: ${status}`;
+        }
+        
+        // Connect to WebSocket server
+        function connect() {
+            try {
+                socket = new WebSocket('ws://localhost:8080');
+                
+                socket.onopen = function() {
+                    log('Connected to server', 'success');
+                    updateStatus('Connected');
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = false;
+                };
+                
+                socket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'id') {
+                        clientId = data.id;
+                        log(`Received client ID: ${clientId}`, 'success');
+                    } else if (data.type === 'positions') {
+                        const playerCount = Object.keys(data.positions).length;
+                        log(`Received positions for ${playerCount} players`);
+                        
+                        // Log the positions of all players
+                        for (const [id, pos] of Object.entries(data.positions)) {
+                            log(`Player ${id}: x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}, z=${pos.z.toFixed(2)}`);
+                        }
+                    }
+                };
+                
+                socket.onclose = function() {
+                    log('Disconnected from server', 'error');
+                    updateStatus('Disconnected');
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    sendBtn.disabled = true;
+                    clearInterval(sendInterval);
+                    sendInterval = null;
+                };
+                
+                socket.onerror = function(error) {
+                    log(`WebSocket error: ${error}`, 'error');
+                    updateStatus('Error');
+                };
+            } catch (error) {
+                log(`Failed to connect: ${error}`, 'error');
+            }
+        }
+        
+        // Disconnect from WebSocket server
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                clearInterval(sendInterval);
+                sendInterval = null;
+            }
+        }
+        
+        // Send random position to server
+        function sendRandomPosition() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const position = {
+                    x: (Math.random() * 20) - 10, // -10 to 10
+                    y: Math.random() * 10,        // 0 to 10
+                    z: (Math.random() * 20) - 10  // -10 to 10
+                };
+                
+                const message = {
+                    type: 'position',
+                    position: position
+                };
+                
+                socket.send(JSON.stringify(message));
+                log(`Sent position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}, z=${position.z.toFixed(2)}`);
+            }
+        }
+        
+        // Set up event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        sendBtn.addEventListener('click', function() {
+            if (sendInterval) {
+                clearInterval(sendInterval);
+                sendInterval = null;
+                sendBtn.textContent = 'Send Random Position';
+                log('Stopped sending random positions');
+            } else {
+                sendInterval = setInterval(sendRandomPosition, 1000);
+                sendBtn.textContent = 'Stop Sending';
+                log('Started sending random positions every second');
+            }
+        });
+        
+        // Initial log message
+        log('Multiplayer test client loaded. Click "Connect to Server" to begin.');
+    </script>
+</body>
+</html> 

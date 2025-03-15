@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diwar Climb - WebSocket Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        #log {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #fff;
+            margin-bottom: 10px;
+        }
+        .control-panel {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0069d9;
+        }
+        .player-list {
+            margin-top: 20px;
+        }
+        .player-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            background-color: #e2e3e5;
+            border-radius: 4px;
+        }
+        .animation-selector {
+            margin-top: 15px;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>Diwar Climb - WebSocket Test Client</h1>
+    
+    <div id="status" class="disconnected">Disconnected</div>
+    
+    <div class="control-panel">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        <button id="sendRandomBtn" disabled>Send Random Position</button>
+        <button id="startAutoSendBtn" disabled>Start Auto-Send</button>
+        <button id="stopAutoSendBtn" disabled>Stop Auto-Send</button>
+        
+        <div class="animation-selector">
+            <label for="animationSelect">Animation: </label>
+            <select id="animationSelect">
+                <option value="idle">Idle</option>
+                <option value="walk">Walk</option>
+                <option value="run">Run</option>
+                <option value="jump">Jump</option>
+                <option value="fall">Fall</option>
+            </select>
+        </div>
+    </div>
+    
+    <h3>Server Messages:</h3>
+    <div id="log"></div>
+    
+    <h3>Connected Players:</h3>
+    <div id="playerList" class="player-list"></div>
+    
+    <script>
+        // DOM Elements
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const playerListEl = document.getElementById('playerList');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const sendRandomBtn = document.getElementById('sendRandomBtn');
+        const startAutoSendBtn = document.getElementById('startAutoSendBtn');
+        const stopAutoSendBtn = document.getElementById('stopAutoSendBtn');
+        const animationSelect = document.getElementById('animationSelect');
+        
+        // WebSocket connection
+        let socket = null;
+        let clientId = null;
+        let autoSendInterval = null;
+        let rotation = 0;
+        
+        // Server URL
+        const SERVER_URL = 'ws://localhost:8080';
+        
+        // Player positions
+        const playerPositions = {};
+        
+        // Connect to the WebSocket server
+        function connect() {
+            try {
+                log('Connecting to server...');
+                socket = new WebSocket(SERVER_URL);
+                
+                // Connection opened
+                socket.onopen = () => {
+                    log('Connected to server');
+                    updateStatus(true);
+                    
+                    // Enable buttons
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendRandomBtn.disabled = false;
+                    startAutoSendBtn.disabled = false;
+                };
+                
+                // Listen for messages
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    
+                    switch (data.type) {
+                        case 'id':
+                            clientId = data.id;
+                            log(`Received client ID: ${clientId}`);
+                            break;
+                            
+                        case 'positions':
+                            // Update player positions
+                            Object.assign(playerPositions, data.positions);
+                            updatePlayerList();
+                            break;
+                            
+                        default:
+                            log(`Unknown message type: ${data.type}`);
+                    }
+                };
+                
+                // Connection closed
+                socket.onclose = () => {
+                    log('Disconnected from server');
+                    updateStatus(false);
+                    stopAutoSend();
+                    
+                    // Reset client ID
+                    clientId = null;
+                    
+                    // Enable/disable buttons
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    sendRandomBtn.disabled = true;
+                    startAutoSendBtn.disabled = true;
+                    stopAutoSendBtn.disabled = true;
+                };
+                
+                // Connection error
+                socket.onerror = (error) => {
+                    log(`WebSocket error: ${error}`);
+                };
+            } catch (error) {
+                log(`Error connecting to server: ${error}`);
+            }
+        }
+        
+        // Disconnect from the server
+        function disconnect() {
+            if (socket) {
+                socket.close();
+            }
+        }
+        
+        // Send a random position to the server
+        function sendRandomPosition() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                // Update rotation (0 to 2π)
+                rotation = (rotation + 0.1) % (Math.PI * 2);
+                
+                // Get selected animation
+                const animation = animationSelect.value;
+                
+                // Create a random position
+                const position = {
+                    x: (Math.random() * 20) - 10,
+                    y: (Math.random() * 5),
+                    z: (Math.random() * 20) - 10,
+                    rotation: rotation,
+                    animation: animation
+                };
+                
+                // Send the position
+                const message = {
+                    type: 'position',
+                    position: position
+                };
+                
+                socket.send(JSON.stringify(message));
+                log(`Sent position: (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}) with rotation: ${position.rotation.toFixed(2)} and animation: ${position.animation}`);
+            }
+        }
+        
+        // Start auto-sending random positions
+        function startAutoSend() {
+            if (!autoSendInterval) {
+                autoSendInterval = setInterval(sendRandomPosition, 1000);
+                startAutoSendBtn.disabled = true;
+                stopAutoSendBtn.disabled = false;
+                log('Started auto-sending positions');
+            }
+        }
+        
+        // Stop auto-sending random positions
+        function stopAutoSend() {
+            if (autoSendInterval) {
+                clearInterval(autoSendInterval);
+                autoSendInterval = null;
+                startAutoSendBtn.disabled = false;
+                stopAutoSendBtn.disabled = true;
+                log('Stopped auto-sending positions');
+            }
+        }
+        
+        // Update the status display
+        function updateStatus(connected) {
+            statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+            statusEl.className = connected ? 'connected' : 'disconnected';
+        }
+        
+        // Update the player list
+        function updatePlayerList() {
+            playerListEl.innerHTML = '';
+            
+            for (const [id, position] of Object.entries(playerPositions)) {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player-item';
+                
+                const isMe = id === clientId ? ' (You)' : '';
+                playerEl.textContent = `Player ${id}${isMe}: (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}) - Rotation: ${position.rotation.toFixed(2)} - Animation: ${position.animation}`;
+                
+                playerListEl.appendChild(playerEl);
+            }
+        }
+        
+        // Log a message
+        function log(message) {
+            const now = new Date();
+            const timestamp = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+            
+            const logItem = document.createElement('div');
+            logItem.textContent = `[${timestamp}] ${message}`;
+            
+            logEl.appendChild(logItem);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        sendRandomBtn.addEventListener('click', sendRandomPosition);
+        startAutoSendBtn.addEventListener('click', startAutoSend);
+        stopAutoSendBtn.addEventListener('click', stopAutoSend);
+        
+        // Log startup
+        log('Test client initialized');
+    </script>
+</body>
+</html> 

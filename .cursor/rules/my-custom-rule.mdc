@@ -1,0 +1,29 @@
+---
+description: As a senior game developer specializing in Three.js, Cannon.js, and WebSocket, here are 6-10 rules for Cursor to ensure best practices:  Modularity Over Monoliths Always split code into multiple files (e.g., scene.js, player.js, network.js). Never generate a single giant file. Each file should have one clear responsibility. Three.js Best Practices Use object pooling for tiles to optimize performance. Keep scenes lean (e.g., 5-10 active tiles max). Cannon.js Physics Simplicity Apply physics only to players and tiles, avoiding unnecessary complexity. Sync Three.js positions with Cannon.js bodies every frame. Networking Efficiency Send minimal data over WebSocket (e.g., { id, x, y, z } for player positions). Broadcast updates at 30 FPS max to balance latency and smoothness. Consistent Naming Use descriptive names (e.g., createPlayer, generateTile) and camelCase for variables/functions. Prefix multiplayer-related functions with network (e.g., networkSyncPlayers). Error Handling Include try-catch blocks for WebSocket connections and log errors to console for debugging. Documentation in Code Add comments explaining each file’s purpose and major functions, making it easy for future devs to jump in. Vibe-Coding Flexibility Generate code that’s easy to tweak (e.g., adjustable constants like TILE_HEIGHT = 10) for rapid iteration.
+globs: 
+alwaysApply: false
+---
+
+# Your rule content
+
+As a senior game developer specializing in Three.js, Cannon.js, and WebSocket, here are 6-10 rules for Cursor to ensure best practices:
+
+Modularity Over Monoliths
+Always split code into multiple files (e.g., scene.js, player.js, network.js). Never generate a single giant file. Each file should have one clear responsibility.
+Three.js Best Practices
+Use object pooling for tiles to optimize performance. Keep scenes lean (e.g., 5-10 active tiles max).
+Cannon.js Physics Simplicity
+Apply physics only to players and tiles, avoiding unnecessary complexity. Sync Three.js positions with Cannon.js bodies every frame.
+Networking Efficiency
+Send minimal data over WebSocket (e.g., { id, x, y, z } for player positions). Broadcast updates at 30 FPS max to balance latency and smoothness.
+Consistent Naming
+Use descriptive names (e.g., createPlayer, generateTile) and camelCase for variables/functions. Prefix multiplayer-related functions with network (e.g., networkSyncPlayers).
+Error Handling
+Include try-catch blocks for WebSocket connections and log errors to console for debugging.
+Documentation in Code
+Add comments explaining each file’s purpose and major functions, making it easy for future devs to jump in.
+Vibe-Coding Flexibility
+Generate code that’s easy to tweak (e.g., adjustable constants like TILE_HEIGHT = 10) for rapid iteration.
+
+- You can @ files here
+- You can use markdown but dont have to

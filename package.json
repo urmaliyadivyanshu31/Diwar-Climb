@@ -1,0 +1,28 @@
+{
+  "name": "diwar-climb",
+  "version": "1.0.0",
+  "description": "A 3D platformer game where players climb an infinite tower",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "game",
+    "threejs",
+    "cannonjs",
+    "websocket",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "three": "^0.150.1",
+    "cannon-es": "^0.20.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
