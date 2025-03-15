@@ -9,6 +9,7 @@
             margin: 0;
             overflow: hidden;
             background-color: #000;
+            font-family: 'Arial', sans-serif;
         }
         canvas {
             display: block;
@@ -19,39 +20,106 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: #000;
+            background: linear-gradient(to bottom, #1a2a3a, #0a0a0a);
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             color: white;
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
             z-index: 1000;
+            transition: opacity 1s ease;
+        }
+        #loading-title {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #3498db;
+            text-shadow: 0 0 10px rgba(52, 152, 219, 0.7);
+            letter-spacing: 2px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); text-shadow: 0 0 10px rgba(52, 152, 219, 0.7); }
+            50% { transform: scale(1.05); text-shadow: 0 0 20px rgba(52, 152, 219, 0.9); }
+            100% { transform: scale(1); text-shadow: 0 0 10px rgba(52, 152, 219, 0.7); }
+        }
+        #loading-subtitle {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #ecf0f1;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            opacity: 0.8;
+        }
+        #loading-message {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #bdc3c7;
         }
         #loading-bar-container {
-            width: 50%;
+            width: 60%;
+            max-width: 400px;
             height: 20px;
-            background-color: #333;
+            background-color: rgba(255, 255, 255, 0.1);
             border-radius: 10px;
-            margin-top: 20px;
+            margin-bottom: 30px;
             overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), inset 0 1px 3px rgba(0, 0, 0, 0.5);
+            position: relative;
         }
         #loading-bar {
             width: 0%;
             height: 100%;
-            background-color: #2ecc71;
-            transition: width 0.3s;
+            background: linear-gradient(to right, #3498db, #2ecc71);
+            transition: width 0.3s ease-out;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        #loading-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.2) 50%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        #loading-tips {
+            max-width: 80%;
+            text-align: center;
+            color: #95a5a6;
+            font-style: italic;
+            font-size: 14px;
+            opacity: 0.7;
         }
     </style>
+    <!-- Vercel Analytics -->
+    <script type="module">
+        import { inject } from 'https://unpkg.com/@vercel/analytics@1.0.0/dist/index.js';
+        inject();
+    </script>
 </head>
 <body>
     <!-- Loading Screen -->
     <div id="loading-screen">
-        <h1>Diwar Climb</h1>
+        <h1 id="loading-title">Diwar Climb</h1>
+        <p id="loading-subtitle">The Ultimate Tower Climbing Adventure</p>
         <p id="loading-message">Loading game assets...</p>
         <div id="loading-bar-container">
             <div id="loading-bar"></div>
         </div>
+        <p id="loading-tips">Tip: Use SHIFT while moving to run faster!</p>
     </div>
 
     <!-- Game Canvas -->
@@ -78,6 +146,9 @@
     <script src="js/debug.js"></script>
     <script src="js/network.js"></script>
     <script src="js/environment.js"></script>
+    
+    <!-- Analytics Module - Must be before main.js -->
+    <script src="js/analytics.js"></script>
     
     <!-- Main Entry Point - Must be last -->
     <script src="js/main.js"></script>

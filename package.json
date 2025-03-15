@@ -17,10 +17,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@vercel/analytics": "^1.5.0",
+    "cannon-es": "^0.20.0",
     "express": "^4.18.2",
-    "ws": "^8.13.0",
     "three": "^0.150.1",
-    "cannon-es": "^0.20.0"
+    "ws": "^8.13.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"

@@ -18,8 +18,24 @@ const modules = {
     tiles: false,
     ui: false,
     network: false,
-    debug: false
+    debug: false,
+    analytics: false
 };
+
+// Loading tips to display during loading
+const loadingTips = [
+    "Use SHIFT while moving to run faster!",
+    "Jump between tiles to climb higher and score more points!",
+    "Watch your health - falling off tiles will damage you!",
+    "The higher you climb, the more points you'll earn!",
+    "Press 'H' to toggle the controls display",
+    "Press 'F' to show the FPS counter",
+    "Press 'R' to restart the game at any time",
+    "Reach height milestones for bonus points!",
+    "Your high score is saved between sessions"
+];
+let currentTipIndex = 0;
+let tipInterval;
 
 /**
  * Initialize the game
@@ -30,11 +46,55 @@ function initGame() {
     // Show loading screen
     showLoadingScreen();
     
+    // Start cycling through tips
+    startTipCycle();
+    
+    // Initialize analytics if available
+    if (window.gameAnalytics) {
+        try {
+            window.gameAnalytics.init();
+            modules.analytics = true;
+            console.log("Analytics module initialized successfully");
+        } catch (error) {
+            console.error("Error initializing analytics module:", error);
+        }
+    }
+    
     // Verify that all required modules are available
     verifyModules();
     
     // Initialize modules in sequence with simulated loading
     setTimeout(() => initializeScene(), 500);
+}
+
+/**
+ * Start cycling through loading tips
+ */
+function startTipCycle() {
+    // Set initial tip
+    updateLoadingTip(loadingTips[currentTipIndex]);
+    
+    // Cycle through tips every 4 seconds
+    tipInterval = setInterval(() => {
+        currentTipIndex = (currentTipIndex + 1) % loadingTips.length;
+        updateLoadingTip(loadingTips[currentTipIndex]);
+    }, 4000);
+}
+
+/**
+ * Update the loading tip
+ */
+function updateLoadingTip(tip) {
+    const tipElement = document.getElementById('loading-tips');
+    if (tipElement) {
+        // Fade out, update text, fade in
+        tipElement.style.opacity = '0';
+        
+        setTimeout(() => {
+            tipElement.textContent = tip;
+            tipElement.style.opacity = '0.7';
+        }, 300);
+    }
 }
 
 /**
@@ -55,10 +115,12 @@ function verifyModules() {
     });
     
     // Check for optional modules
-    const optionalModules = ['environment', 'character', 'ui', 'network', 'debug'];
+    const optionalModules = ['environment', 'character', 'ui', 'network', 'debug', 'gameAnalytics'];
     optionalModules.forEach(module => {
         if (!window[module]) {
             console.warn(`Optional module '${module}' is not available.`);
+        } else if (module === 'gameAnalytics') {
+            modules.analytics = true;
         } else {
             modules[module] = true;
         }
@@ -69,6 +131,15 @@ function verifyModules() {
         const errorMessage = `Missing required modules: ${missingModules.join(', ')}`;
         alert(`Error: ${errorMessage}. The game cannot start.`);
         console.error(errorMessage);
+        
+        // Track error if analytics is available
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackEvent('initialization_error', {
+                error: errorMessage,
+                missingModules: missingModules.join(',')
+            });
+        }
+        
         return;
     }
     
@@ -84,6 +155,7 @@ function showLoadingScreen() {
     
     if (loadingScreen) {
         loadingScreen.style.display = 'flex';
+        loadingScreen.style.opacity = '1';
     }
     
     if (loadingBar) {
@@ -105,10 +177,21 @@ function updateLoadingProgress(step, message) {
     }
     
     if (loadingMessage && message) {
-        loadingMessage.textContent = message;
+        // Fade out, update text, fade in
+        loadingMessage.style.opacity = '0';
+        
+        setTimeout(() => {
+            loadingMessage.textContent = message;
+            loadingMessage.style.opacity = '1';
+        }, 200);
     }
     
     console.log(`Loading: ${message} (${loadingProgress.toFixed(0)}%)`);
+    
+    // Track loading progress at key points if analytics is available
+    if ((step === 1 || step === 4 || step === 8) && modules.analytics && window.gameAnalytics) {
+        window.gameAnalytics.trackLoadingProgress(step, loadingProgress.toFixed(0), message);
+    }
 }
 
 /**
@@ -120,11 +203,13 @@ function hideLoadingScreen() {
     if (loadingScreen) {
         // Fade out the loading screen
         loadingScreen.style.opacity = '0';
-        loadingScreen.style.transition = 'opacity 1s';
         
         // Remove it after the transition
         setTimeout(() => {
             loadingScreen.style.display = 'none';
+            
+            // Stop cycling through tips
+            clearInterval(tipInterval);
         }, 1000);
     }
 }
@@ -141,6 +226,9 @@ function initializeScene() {
         console.log("Scene module initialized successfully");
     } catch (error) {
         console.error("Error initializing scene module:", error);
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackModuleError('scene', error.message);
+        }
     }
     
     setTimeout(() => initializePhysics(), 500);
@@ -158,6 +246,9 @@ function initializePhysics() {
         console.log("Physics module initialized successfully");
     } catch (error) {
         console.error("Error initializing physics module:", error);
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackModuleError('physics', error.message);
+        }
     }
     
     setTimeout(() => initializeEnvironment(), 500);
@@ -176,6 +267,9 @@ function initializeEnvironment() {
             console.log("Environment module initialized successfully");
         } catch (error) {
             console.error("Error initializing environment module:", error);
+            if (modules.analytics && window.gameAnalytics) {
+                window.gameAnalytics.trackModuleError('environment', error.message);
+            }
         }
     }
     
@@ -194,6 +288,9 @@ function initializePlayer() {
         console.log("Player module initialized successfully");
     } catch (error) {
         console.error("Error initializing player module:", error);
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackModuleError('player', error.message);
+        }
     }
     
     setTimeout(() => initializeCharacter(), 500);
@@ -214,9 +311,18 @@ function initializeCharacter() {
                 console.log("Character module initialization started successfully");
             } else {
                 console.warn("Character initialization returned false");
+                if (modules.analytics && window.gameAnalytics) {
+                    window.gameAnalytics.trackEvent('module_warning', {
+                        module: 'character',
+                        warning: 'Initialization returned false'
+                    });
+                }
             }
         } catch (error) {
             console.error("Error initializing character module:", error);
+            if (modules.analytics && window.gameAnalytics) {
+                window.gameAnalytics.trackModuleError('character', error.message);
+            }
         }
     } else {
         console.warn("Character module not found!");
@@ -237,6 +343,9 @@ function initializeTiles() {
         console.log("Tiles module initialized successfully");
     } catch (error) {
         console.error("Error initializing tiles module:", error);
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackModuleError('tiles', error.message);
+        }
     }
     
     // Initialize UI separately
@@ -256,6 +365,9 @@ function initializeUI() {
             console.log("UI module initialized successfully");
         } catch (error) {
             console.error("Error initializing UI module:", error);
+            if (modules.analytics && window.gameAnalytics) {
+                window.gameAnalytics.trackModuleError('ui', error.message);
+            }
         }
     } else {
         console.warn("UI module not found!");
@@ -277,10 +389,23 @@ function initializeNetwork() {
             console.log("Network module initialized successfully");
         } catch (error) {
             console.error("Error initializing network module:", error);
+            if (modules.analytics && window.gameAnalytics) {
+                window.gameAnalytics.trackModuleError('network', error.message);
+            }
         }
     }
     
     // Start the game after a short delay
+    setTimeout(() => finalizeLoading(), 800);
+}
+
+/**
+ * Finalize loading and prepare to start the game
+ */
+function finalizeLoading() {
+    updateLoadingProgress(8, "Finalizing game setup...");
+    
+    // Add a slight delay for the final loading step to be visible
     setTimeout(() => startGame(), 1000);
 }
 
@@ -300,6 +425,9 @@ function startGame() {
             modules.debug = true;
         } catch (error) {
             console.error("Error initializing debug module:", error);
+            if (modules.analytics && window.gameAnalytics) {
+                window.gameAnalytics.trackModuleError('debug', error.message);
+            }
         }
     }
     
@@ -314,6 +442,15 @@ function startGame() {
         const errorMessage = `Required modules not initialized: ${uninitializedModules.join(', ')}`;
         alert(`Error: ${errorMessage}. The game cannot start.`);
         console.error(errorMessage);
+        
+        // Track error if analytics is available
+        if (modules.analytics && window.gameAnalytics) {
+            window.gameAnalytics.trackEvent('start_error', {
+                error: errorMessage,
+                uninitializedModules: uninitializedModules.join(',')
+            });
+        }
+        
         return;
     }
     
@@ -321,6 +458,23 @@ function startGame() {
     window.gameScene.startGame();
     
     console.log("Game started successfully!");
+    
+    // Track game start if analytics is available
+    if (modules.analytics && window.gameAnalytics) {
+        window.gameAnalytics.trackGameStart(modules);
+    }
+    
+    // Show welcome notification if UI is available
+    if (window.ui && window.ui.showNotification) {
+        setTimeout(() => {
+            window.ui.showNotification("Welcome to Diwar Climb! Climb as high as you can!", "welcome");
+        }, 1500);
+    }
+    
+    // Set up analytics hooks if analytics is available
+    if (modules.analytics && window.gameAnalytics && window.gameAnalytics.setupGameHooks) {
+        window.gameAnalytics.setupGameHooks(window);
+    }
 }
 
 // Initialize the game when the window loads

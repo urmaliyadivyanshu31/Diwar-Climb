@@ -14,6 +14,7 @@ let uiContainer;
 let controlsInfo;
 let fpsCounter;
 let highScoreElement;
+let notificationContainer;
 
 // Default values
 const DEFAULT_HEALTH = 100;
@@ -56,12 +57,20 @@ function initUI() {
     // Create game over screen
     createGameOverScreen();
     
+    // Create notification container
+    createNotificationContainer();
+    
     // Set initial values
     updateScore(DEFAULT_SCORE);
     updateHealth(DEFAULT_HEALTH);
     
     // Add keyboard listener for UI toggles
     window.addEventListener('keydown', handleUIKeyboard);
+    
+    // Show initial welcome notification
+    setTimeout(() => {
+        showNotification("Welcome to Diwar Climb! Use WASD to move and SPACE to jump.", "welcome");
+    }, 2000);
     
     console.log("UI initialized");
 }
@@ -78,6 +87,7 @@ function createUIContainer() {
     // Add CSS styles
     const style = document.createElement('style');
     style.textContent = `
+        /* Base UI Styles */
         #ui-container {
             position: absolute;
             top: 20px;
@@ -86,32 +96,70 @@ function createUIContainer() {
             font-family: 'Arial', sans-serif;
             z-index: 100;
             user-select: none;
+            transition: opacity 0.3s ease;
         }
         
+        /* Game Info Panel */
         .game-info {
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 10px 15px;
-            margin-bottom: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 12px 18px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
             font-size: 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            min-width: 200px;
+            min-width: 220px;
+            border-left: 4px solid #3498db;
+            backdrop-filter: blur(5px);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .game-info:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6);
         }
         
         .game-info span:first-child {
             font-weight: bold;
             margin-right: 10px;
+            color: #3498db;
         }
         
+        #score {
+            border-left-color: #2ecc71;
+        }
+        
+        #score span:first-child {
+            color: #2ecc71;
+        }
+        
+        #high-score {
+            border-left-color: #f1c40f;
+        }
+        
+        #high-score span:first-child {
+            color: #f1c40f;
+        }
+        
+        #height {
+            border-left-color: #9b59b6;
+        }
+        
+        #height span:first-child {
+            color: #9b59b6;
+        }
+        
+        /* Health Bar */
         .health-bar {
-            width: 120px;
-            height: 10px;
+            width: 140px;
+            height: 12px;
             background-color: rgba(255, 0, 0, 0.3);
-            border-radius: 5px;
+            border-radius: 6px;
             overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+            position: relative;
         }
         
         .health-bar-fill {
@@ -119,145 +167,46 @@ function createUIContainer() {
             background-color: #2ecc71;
             width: var(--health-width, 100%);
             transition: width 0.3s, background-color 0.3s;
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.5);
+            position: relative;
+        }
+        
+        .health-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.2), transparent);
         }
         
         .health-bar-fill.medium {
             background-color: #f39c12;
+            box-shadow: 0 0 8px rgba(243, 156, 18, 0.5);
         }
         
         .health-bar-fill.low {
             background-color: #e74c3c;
+            box-shadow: 0 0 8px rgba(231, 76, 60, 0.5);
+            animation: pulse 1s infinite;
         }
         
-        #game-over {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 30px;
-            border-radius: 10px;
-            text-align: center;
-            z-index: 1000;
-            display: none;
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
         }
         
-        #game-over h2 {
-            font-size: 36px;
-            margin-bottom: 20px;
-            color: #e74c3c;
-        }
-        
-        #game-over button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-size: 18px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            margin-top: 20px;
-        }
-        
-        #game-over button:hover {
-            background-color: #2980b9;
-        }
-        
-        #controls-info {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background-color: rgba(0, 0, 0, 0.6);
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: 'Arial', sans-serif;
-            z-index: 100;
-            max-width: 300px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
-            font-size: 14px;
-            text-shadow: 1px 1px 2px black;
-            user-select: none;
-        }
-        
-        #controls-info h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            font-size: 18px;
-        }
-        
-        #controls-info ul {
-            margin: 0;
-            padding-left: 20px;
-        }
-        
-        #controls-info li {
-            margin-bottom: 5px;
-        }
-        
-        .notification {
-            position: fixed;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px 25px;
-            border-radius: 5px;
-            font-family: 'Arial', sans-serif;
-            font-size: 18px;
-            z-index: 1000;
-            display: none;
-            opacity: 0;
-            transition: opacity 0.5s;
-            text-align: center;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
-        }
-        
-        .notification.visible {
-            display: block;
-            opacity: 1;
-        }
-        
-        .notification.milestone {
-            background-color: rgba(46, 204, 113, 0.9);
-            color: white;
-            font-weight: bold;
-        }
-        
-        .notification.warning {
-            background-color: rgba(231, 76, 60, 0.9);
-            color: white;
-        }
-        
-        #fps-counter {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            left: auto;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: yellow;
-            font-family: monospace;
-            display: none;
-        }
-        
-        #fps-counter.visible {
-            display: block;
-        }
-        
-        #controls-info.hidden {
-            display: none;
-        }
-        
+        /* Game Over Screen */
         #game-over-screen {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -265,29 +214,203 @@ function createUIContainer() {
             color: white;
             font-family: 'Arial', sans-serif;
             z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.5s ease;
         }
         
         #game-over-screen.visible {
             display: flex;
+            opacity: 1;
         }
         
         #game-over-screen h1 {
-            font-size: 48px;
+            font-size: 64px;
             margin-bottom: 20px;
+            color: #e74c3c;
+            text-shadow: 0 0 10px rgba(231, 76, 60, 0.7);
+            animation: gameOverPulse 2s infinite;
+        }
+        
+        @keyframes gameOverPulse {
+            0% { transform: scale(1); text-shadow: 0 0 10px rgba(231, 76, 60, 0.7); }
+            50% { transform: scale(1.05); text-shadow: 0 0 20px rgba(231, 76, 60, 0.9); }
+            100% { transform: scale(1); text-shadow: 0 0 10px rgba(231, 76, 60, 0.7); }
         }
         
         #final-score {
-            font-size: 24px;
-            margin-bottom: 30px;
+            font-size: 32px;
+            margin-bottom: 40px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         }
         
         #game-over-screen button {
-            padding: 10px 20px;
-            font-size: 18px;
+            padding: 15px 30px;
+            font-size: 20px;
             background-color: #2ecc71;
+            color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        #game-over-screen button:hover {
+            background-color: #27ae60;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        #game-over-screen button:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Controls Info Panel */
+        #controls-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 18px;
+            border-radius: 8px;
+            font-family: 'Arial', sans-serif;
+            z-index: 100;
+            max-width: 300px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            font-size: 14px;
+            text-shadow: 1px 1px 2px black;
+            user-select: none;
+            border-left: 4px solid #3498db;
+            backdrop-filter: blur(5px);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        
+        #controls-info h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 20px;
+            color: #3498db;
+            border-bottom: 1px solid rgba(52, 152, 219, 0.5);
+            padding-bottom: 8px;
+        }
+        
+        #controls-info div {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+        
+        #controls-info div::before {
+            content: '•';
+            color: #3498db;
+            margin-right: 8px;
+            font-size: 18px;
+        }
+        
+        #controls-info.hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+        }
+        
+        /* Notification System */
+        #notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            pointer-events: none;
+        }
+        
+        .notification {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-family: 'Arial', sans-serif;
+            font-size: 16px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            max-width: 100%;
+            border-left: 4px solid #3498db;
+            opacity: 0;
+        }
+        
+        .notification.visible {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        
+        .notification.milestone {
+            background-color: rgba(46, 204, 113, 0.9);
+            border-left-color: #27ae60;
+        }
+        
+        .notification.warning {
+            background-color: rgba(231, 76, 60, 0.9);
+            border-left-color: #c0392b;
+        }
+        
+        .notification.welcome {
+            background-color: rgba(52, 152, 219, 0.9);
+            border-left-color: #2980b9;
+        }
+        
+        /* FPS Counter */
+        #fps-counter {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #f1c40f;
+            font-family: monospace;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+            border-left: 3px solid #f1c40f;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        #fps-counter.visible {
+            display: block;
+        }
+        
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .game-info {
+                min-width: 180px;
+                font-size: 14px;
+                padding: 10px 15px;
+            }
+            
+            .health-bar {
+                width: 100px;
+            }
+            
+            #controls-info {
+                font-size: 12px;
+                max-width: 250px;
+            }
+            
+            #game-over-screen h1 {
+                font-size: 48px;
+            }
+            
+            #final-score {
+                font-size: 24px;
+            }
         }
     `;
     document.head.appendChild(style);
@@ -333,9 +456,8 @@ function createGameInfoElements() {
     // Create FPS counter (hidden by default)
     fpsCounter = document.createElement('div');
     fpsCounter.id = 'fps-counter';
-    fpsCounter.className = 'game-info';
     fpsCounter.innerHTML = `<span>FPS:</span> <span id="fps-value">0</span>`;
-    uiContainer.appendChild(fpsCounter);
+    document.body.appendChild(fpsCounter);
 }
 
 /**
@@ -348,7 +470,7 @@ function createControlsInfo() {
     
     // Add controls information
     controlsInfo.innerHTML = `
-        <h3>Controls:</h3>
+        <h3>Controls</h3>
         <div>WASD / Arrow Keys: Move</div>
         <div>Space: Jump</div>
         <div>Shift: Run</div>
@@ -358,6 +480,15 @@ function createControlsInfo() {
     `;
     
     document.body.appendChild(controlsInfo);
+}
+
+/**
+ * Create notification container
+ */
+function createNotificationContainer() {
+    notificationContainer = document.createElement('div');
+    notificationContainer.id = 'notification-container';
+    document.body.appendChild(notificationContainer);
 }
 
 /**
@@ -410,6 +541,15 @@ function handleUIKeyboard(event) {
         case 'H':
             // Toggle controls info
             controlsInfo.classList.toggle('hidden');
+            break;
+            
+        case 'r':
+        case 'R':
+            // Restart game if not in game over state
+            if (!gameOverScreen.classList.contains('visible')) {
+                window.gameScene.restartGame();
+                showNotification("Game Restarted", "warning");
+            }
             break;
     }
 }
@@ -466,6 +606,11 @@ function updateHealth(health) {
     healthBar.classList.remove('medium', 'low');
     if (healthPercent <= 30) {
         healthBar.classList.add('low');
+        
+        // Show warning if health is critically low
+        if (healthPercent <= 20 && healthPercent > 0) {
+            showNotification("Health critically low!", "warning");
+        }
     } else if (healthPercent <= 60) {
         healthBar.classList.add('medium');
     }
@@ -510,7 +655,7 @@ function updateHeight(height) {
 /**
  * Update FPS counter
  */
-function updateFPS() {
+function updateFPS(deltaTime) {
     if (showFps) {
         const now = performance.now();
         uiFrameCount++;
@@ -521,6 +666,15 @@ function updateFPS() {
             const fpsValue = document.getElementById('fps-value');
             if (fpsValue) {
                 fpsValue.textContent = fps;
+                
+                // Color code based on performance
+                if (fps >= 55) {
+                    fpsValue.style.color = '#2ecc71'; // Green
+                } else if (fps >= 30) {
+                    fpsValue.style.color = '#f1c40f'; // Yellow
+                } else {
+                    fpsValue.style.color = '#e74c3c'; // Red
+                }
             }
             uiFrameCount = 0;
             lastFrameTime = now;
@@ -551,14 +705,29 @@ function resetUI() {
     updateHealth(DEFAULT_HEALTH);
     updateHeight(DEFAULT_HEIGHT);
     hideGameOver();
+    
+    // Reset milestone tracking
+    lastMilestoneReached = -1;
 }
 
 /**
  * Update UI elements
  */
-function updateUI() {
+function updateUI(deltaTime) {
     // Update FPS counter
-    updateFPS();
+    updateFPS(deltaTime);
+    
+    // Update player height if player exists
+    if (window.player && window.player.getPlayerPosition) {
+        try {
+            const playerPos = window.player.getPlayerPosition();
+            if (playerPos) {
+                updateHeight(playerPos.y);
+            }
+        } catch (error) {
+            console.warn("Error updating height:", error);
+        }
+    }
 }
 
 /**
@@ -567,30 +736,27 @@ function updateUI() {
  * @param {string} type - The type of notification (default, milestone, warning, etc.)
  */
 function showNotification(message, type = 'default') {
-    // Create notification element if it doesn't exist
-    let notification = document.getElementById('notification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'notification';
-        notification.className = 'notification';
-        document.body.appendChild(notification);
-    }
-    
-    // Set notification content and class
-    notification.textContent = message;
+    // Create notification element
+    const notification = document.createElement('div');
     notification.className = `notification ${type}`;
+    notification.textContent = message;
     
-    // Show the notification with animation
-    requestAnimationFrame(() => {
+    // Add to container
+    notificationContainer.appendChild(notification);
+    
+    // Show with animation (delayed to allow DOM to update)
+    setTimeout(() => {
         notification.classList.add('visible');
-    });
+    }, 10);
     
-    // Hide after 3 seconds
+    // Remove after delay
     setTimeout(() => {
         notification.classList.remove('visible');
+        
+        // Remove from DOM after animation completes
         setTimeout(() => {
-            notification.classList.remove(type);
-        }, 500);
+            notification.remove();
+        }, 300);
     }, 3000);
 }
 
@@ -603,5 +769,6 @@ window.ui = {
     updateHeight,
     showGameOver,
     hideGameOver,
-    resetUI
+    resetUI,
+    showNotification
 }; 
